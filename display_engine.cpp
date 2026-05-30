@@ -1,0 +1,204 @@
+// display_engine.cpp
+#include "display_engine.h"
+#include <Arduino.h>
+
+// ── Tabla de dígitos (0-9) — COPIADA EXACTA del sketch original (fuente de verdad)
+// Formato: {count, led0, led1, ..., 0-relleno} (15 entradas total)
+// Segmentos verificados: G=0,1  F=2,3  A=4,5  B=6,7  C=8,9  D=10,11  E=12,13
+static const uint8_t DIGIT_MAP[10][15] = {
+  {12, 2,3, 4,5, 6,7, 8,9, 10,11, 12,13, 0,0},  // 0
+  { 4, 6,7, 8,9, 0,0, 0,0,  0,0,   0,0,  0,0},  // 1
+  {10, 0,1, 4,5, 6,7, 10,11, 12,13, 0,0, 0,0},  // 2
+  {10, 0,1, 4,5, 6,7, 8,9,  10,11,  0,0, 0,0},  // 3
+  { 8, 0,1, 2,3, 6,7, 8,9,   0,0,   0,0, 0,0},  // 4
+  {10, 0,1, 2,3, 4,5, 8,9,  10,11,  0,0, 0,0},  // 5
+  {12, 0,1, 2,3, 4,5, 8,9,  10,11, 12,13, 0,0}, // 6
+  { 6, 4,5, 6,7, 8,9, 0,0,   0,0,   0,0, 0,0},  // 7
+  {14, 0,1, 2,3, 4,5, 6,7,   8,9,  10,11,12,13},// 8
+  {12, 0,1, 2,3, 4,5, 6,7,   8,9,  10,11, 0,0}, // 9
+};
+
+// ── Tabla de letras y símbolos ────────────────────────────────────────────
+// Mapeo verificado: G=0,1 F=2,3 A=4,5 B=6,7 C=8,9 D=10,11 E=12,13
+static const char CHAR_KEYS[] = " -ABCDEFGHIJLNOPRSTUYZ";
+static const uint8_t CHAR_MAP[][15] = {
+  { 0, 0,0, 0,0, 0,0, 0,0,  0,0,  0,0,  0,0},   // ' ' (espacio)
+  { 2, 0,1, 0,0, 0,0, 0,0,  0,0,  0,0,  0,0},   // '-'  G
+  {12, 0,1, 2,3, 4,5, 6,7,  8,9, 12,13, 0,0},   // 'A'
+  {10, 0,1, 2,3, 8,9, 10,11, 12,13, 0,0, 0,0},  // 'B'
+  { 8, 2,3, 4,5, 10,11, 12,13, 0,0, 0,0, 0,0},  // 'C'
+  {10, 0,1, 6,7, 8,9, 10,11, 12,13, 0,0, 0,0},  // 'D'
+  {10, 0,1, 2,3, 4,5, 10,11, 12,13, 0,0, 0,0},  // 'E'
+  { 8, 0,1, 2,3, 4,5, 12,13, 0,0,  0,0, 0,0},   // 'F'
+  {10, 2,3, 4,5, 8,9, 10,11, 12,13, 0,0, 0,0},  // 'G'
+  {10, 0,1, 2,3, 6,7, 8,9,  12,13, 0,0, 0,0},   // 'H'
+  { 4, 6,7, 8,9, 0,0, 0,0,   0,0,  0,0, 0,0},   // 'I'
+  { 6, 6,7, 8,9, 10,11, 0,0, 0,0,  0,0, 0,0},   // 'J'
+  { 6, 2,3, 10,11, 12,13, 0,0, 0,0, 0,0, 0,0},  // 'L'
+  { 6, 0,1, 8,9, 12,13, 0,0, 0,0,  0,0, 0,0},   // 'N'
+  {12, 2,3, 4,5, 6,7, 8,9, 10,11, 12,13, 0,0},  // 'O'
+  {10, 0,1, 2,3, 4,5, 6,7, 12,13,  0,0, 0,0},   // 'P'
+  { 4, 0,1, 12,13, 0,0, 0,0, 0,0,  0,0, 0,0},   // 'R'
+  {10, 0,1, 2,3, 4,5, 8,9, 10,11,  0,0, 0,0},   // 'S'
+  { 8, 0,1, 2,3, 10,11, 12,13, 0,0, 0,0, 0,0},  // 'T'
+  {10, 2,3, 6,7, 8,9, 10,11, 12,13, 0,0, 0,0},  // 'U'
+  {10, 0,1, 2,3, 6,7, 8,9, 10,11,  0,0, 0,0},   // 'Y'
+  {10, 0,1, 4,5, 6,7, 10,11, 12,13, 0,0, 0,0},  // 'Z'
+};
+
+DisplayEngine::DisplayEngine()
+  : _pixels(NEO_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800) {}
+
+void DisplayEngine::begin() {
+  _pixels.begin();
+  _pixels.setBrightness(NEO_BRIGHTNESS);
+  _pixels.show();
+  Serial.println(F("[DISPLAY] Inicializado"));
+}
+
+void DisplayEngine::clear() {
+  _scrolling = false;
+  _pixels.clear();
+  _pixels.show();
+}
+
+void DisplayEngine::setBrightness(uint8_t brightness) {
+  _pixels.setBrightness(brightness);
+  _pixels.show();
+}
+
+void DisplayEngine::setBaseColor(uint32_t color) {
+  _baseColor = color;
+}
+
+// ── Renderizado de dígitos ────────────────────────────────────────────────
+
+void DisplayEngine::_renderDigit(int position, int digit, uint32_t color) {
+  if (position < 0 || position > 3) return;
+  if (digit < 0 || digit > 9) return;
+  int offset = position * 14;
+  uint8_t count = DIGIT_MAP[digit][0];
+  for (uint8_t i = 1; i <= count; i++) {
+    _pixels.setPixelColor(offset + DIGIT_MAP[digit][i], color);
+  }
+}
+
+void DisplayEngine::showTime(int hours, int minutes) {
+  _scrolling = false;
+  _pixels.clear();
+  uint32_t color = (_baseColor != 0) ? _baseColor : _pixels.Color(255, 255, 255);
+  _renderDigit(0, hours / 10,   color);
+  _renderDigit(1, hours % 10,   color);
+  _renderDigit(2, minutes / 10, color);
+  _renderDigit(3, minutes % 10, color);
+  _pixels.show();
+}
+
+uint32_t DisplayEngine::hexToColor(const char* hex) {
+  // Acepta "#RRGGBB" o "RRGGBB"
+  if (!hex) return 0xFFFFFF;
+  const char* p = (hex[0] == '#') ? hex + 1 : hex;
+  long v = strtol(p, nullptr, 16);
+  uint8_t r = (v >> 16) & 0xFF;
+  uint8_t g = (v >>  8) & 0xFF;
+  uint8_t b =  v        & 0xFF;
+  return Adafruit_NeoPixel::Color(r, g, b);
+}
+
+// ── Renderizado de caracteres ─────────────────────────────────────────────
+
+void DisplayEngine::_renderChar(int position, char c, uint32_t color) {
+  if (position < 0 || position > 3) return;
+  if (c >= 'a' && c <= 'z') c = c - 32; // a mayúscula
+
+  if (c >= '0' && c <= '9') {
+    _renderDigit(position, c - '0', color);
+    return;
+  }
+
+  int offset = position * 14;
+  for (int i = 0; CHAR_KEYS[i] != '\0'; i++) {
+    if (CHAR_KEYS[i] == c) {
+      uint8_t count = CHAR_MAP[i][0];
+      for (uint8_t j = 1; j <= count; j++) {
+        _pixels.setPixelColor(offset + CHAR_MAP[i][j], color);
+      }
+      return;
+    }
+  }
+  // Carácter no encontrado → posición en blanco
+}
+
+void DisplayEngine::showText(const char* text, uint32_t color) {
+  _scrolling = false;
+  _pixels.clear();
+  uint32_t c = (color != 0) ? color : _baseColor;
+  for (int i = 0; i < 4; i++) {
+    if (text[i] == '\0') break;
+    _renderChar(i, text[i], c);
+  }
+  _pixels.show();
+}
+
+void DisplayEngine::showNumber(int number, uint32_t color) {
+  _scrolling = false;
+  _pixels.clear();
+  uint32_t c = (color != 0) ? color : _baseColor;
+  number = abs(number) % 10000;
+
+  int digits[4];
+  digits[3] = number % 10;
+  digits[2] = (number / 10) % 10;
+  digits[1] = (number / 100) % 10;
+  digits[0] = (number / 1000) % 10;
+
+  bool leading = true;
+  for (int i = 0; i < 4; i++) {
+    if (leading && digits[i] == 0 && i < 3) continue; // saltar ceros iniciales
+    leading = false;
+    _renderDigit(i, digits[i], c);
+  }
+  _pixels.show();
+}
+
+// ── Scroll ────────────────────────────────────────────────────────────────
+
+void DisplayEngine::startScroll(const char* text, uint32_t color, int speedMs) {
+  _scrollText = "    ";
+  _scrollText += text;
+  _scrollText += "    ";
+  _scrollColor   = (color != 0) ? color : _baseColor;
+  _scrollSpeedMs = (speedMs > 0) ? speedMs : SCROLL_DEFAULT_MS;
+  _scrollPos     = 0;
+  _scrolling     = true;
+  _lastScrollTick = millis();
+  Serial.printf("[DISPLAY] Scroll: '%s' (%dms)\n", text, _scrollSpeedMs);
+}
+
+void DisplayEngine::tickScroll() {
+  if (!_scrolling) return;
+  if (millis() - _lastScrollTick < (unsigned long)_scrollSpeedMs) return;
+  _lastScrollTick = millis();
+
+  _pixels.clear();
+  for (int i = 0; i < 4; i++) {
+    int idx = _scrollPos + i;
+    if (idx < (int)_scrollText.length()) {
+      _renderChar(i, _scrollText[idx], _scrollColor);
+    }
+  }
+  _pixels.show();
+
+  _scrollPos++;
+
+  if (_scrollPos >= (int)_scrollText.length()) {
+    _scrolling = false;
+    _pixels.clear();
+    _pixels.show();
+    Serial.println(F("[DISPLAY] Scroll terminado"));
+  }
+}
+
+bool DisplayEngine::isScrolling() const {
+  return _scrolling;
+}
