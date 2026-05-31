@@ -30,7 +30,7 @@ void MQTTManager::loop() {
   }
 }
 
-bool MQTTManager::isConnected() const {
+bool MQTTManager::isConnected() {
   return _client.connected();
 }
 

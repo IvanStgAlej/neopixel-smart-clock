@@ -12,7 +12,7 @@ public:
   MQTTManager();
   void begin(const char* server, int port, MQTTMessageCallback callback);
   void loop();
-  bool isConnected() const;
+  bool isConnected();
   void publish(const char* topic, const char* payload, bool retain = false);
   void publishDiscovery();
 
