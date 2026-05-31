@@ -46,6 +46,22 @@ static const uint8_t CHAR_MAP[][15] = {
   {10, 0,1, 4,5, 6,7, 10,11, 12,13, 0,0, 0,0},  // 'Z'
 };
 
+// ── Rotación 180° por dígito ──────────────────────────────────────────────
+// Si la tira alimenta el dato (DIN) por el extremo opuesto, cada dígito sale
+// boca abajo. Un giro de 180° intercambia los segmentos opuestos:
+//   F(2,3)↔C(8,9)   A(4,5)↔D(10,11)   B(6,7)↔E(12,13)   G(0,1) se queda igual.
+// ROT180[r] devuelve el índice relativo (0-13) ya rotado.
+static const uint8_t ROT180[14] = { 0,1, 8,9, 10,11, 12,13, 2,3, 4,5, 6,7 };
+
+// Aplica el offset de posición y, si FLIP_DIGITS está activo, la rotación.
+static inline uint16_t mapLed(int offset, uint8_t rel) {
+#if FLIP_DIGITS
+  return offset + ROT180[rel];
+#else
+  return offset + rel;
+#endif
+}
+
 DisplayEngine::DisplayEngine()
   : _pixels(NEO_COUNT, NEO_PIN, NEO_GRB + NEO_KHZ800) {}
 
@@ -79,7 +95,7 @@ void DisplayEngine::_renderDigit(int position, int digit, uint32_t color) {
   int offset = position * 14;
   uint8_t count = DIGIT_MAP[digit][0];
   for (uint8_t i = 1; i <= count; i++) {
-    _pixels.setPixelColor(offset + DIGIT_MAP[digit][i], color);
+    _pixels.setPixelColor(mapLed(offset, DIGIT_MAP[digit][i]), color);
   }
 }
 
@@ -121,7 +137,7 @@ void DisplayEngine::_renderChar(int position, char c, uint32_t color) {
     if (CHAR_KEYS[i] == c) {
       uint8_t count = CHAR_MAP[i][0];
       for (uint8_t j = 1; j <= count; j++) {
-        _pixels.setPixelColor(offset + CHAR_MAP[i][j], color);
+        _pixels.setPixelColor(mapLed(offset, CHAR_MAP[i][j]), color);
       }
       return;
     }

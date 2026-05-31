@@ -6,6 +6,10 @@
 #define NEO_COUNT      56
 #define NEO_BRIGHTNESS 80       // 0-255, arranca al ~30%
 
+// Orientación física: si cada dígito se ve girado 180° (boca abajo),
+// pon esto a 1 para invertir el mapeo de LEDs por dígito. 0 = sin rotar.
+#define FLIP_DIGITS    1
+
 // ── NTP ───────────────────────────────────────────────
 #define NTP_SERVER     "pool.ntp.org"
 #define NTP_OFFSET     3600     // UTC+1 (España invierno). Verano: 7200
