@@ -1,8 +1,8 @@
 # Diagnostics: listens to the clock's topics on the Home Assistant broker.
 # Usage: python scripts/check_mqtt.py [broker_host]   (asks for the broker user and password)
 import getpass, sys, time, paho.mqtt.client as m
-host = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.4"
-user = input("MQTT user [reloj]: ") or "reloj"
+host = sys.argv[1] if len(sys.argv) > 1 else "homeassistant.local"
+user = input("MQTT user: ")
 pwd = getpass.getpass("MQTT password: ")
 c = m.Client(m.CallbackAPIVersion.VERSION2, client_id="diag_pc")
 c.username_pw_set(user, pwd)

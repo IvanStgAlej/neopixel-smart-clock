@@ -52,12 +52,12 @@ Hardware-independent logic is extracted into `lib/clock_core/` and does not incl
 
 ### Firmware version
 
-`scripts/version.py` defines `FW_VERSION` from `git describe --tags` (falling back to `0.0.0-dev`). It is published in `reloj/state` as `version` and in the Discovery `device` block as `sw_version`.
+`scripts/version.py` defines `FW_VERSION` from `git describe --tags` (untagged builds get `0.0.0-dev+<short-hash>`, with `-dirty` when the tree is dirty; plain `0.0.0-dev` only when git is unavailable). It is published in `reloj/state` as `version` and in the Discovery `device` block as `sw_version`.
 
 ### CI
 
 - `ci.yml` (push and pull request): install PlatformIO with caching, run `pio test -e native`, run `pio run -e nodemcuv2` using the example secrets, upload the `.bin` as an artifact.
-- `release.yml` (tag `v*`): build, test, and create a GitHub Release with `firmware-vX.Y.Z.bin` and its `sha256`.
+- `release.yml` (tag `v*`): build, test, and create a GitHub Release with `firmware-vX.Y.Z.bin` and its `sha256`. These binaries are built without `include/secrets.h`, so they carry placeholder credentials; they are reference artifacts and must not be flashed (directly or through `/update`) onto a real clock. Flash a build from source with your own `include/secrets.h`.
 
 ## Verification
 

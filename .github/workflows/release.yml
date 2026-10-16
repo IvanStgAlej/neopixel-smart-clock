@@ -69,3 +69,5 @@ jobs:
             firmware-${{ github.ref_name }}.bin
             firmware-${{ github.ref_name }}.bin.sha256
           generate_release_notes: true
+          body: |
+            **Warning:** this binary was built in CI without `include/secrets.h`, so it contains placeholder credentials (MQTT/OTA password `change-me`, `/update` login `admin`/`change-me`). It is a reference artifact. Do not flash it onto a real clock: the MQTT login would fail and the OTA passwords would be guessable. Build from source with your own `include/secrets.h` instead.

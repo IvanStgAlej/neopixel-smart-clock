@@ -9,6 +9,7 @@
 uint16_t glyphMask(char c);
 
 // Converts UTF-8 accents/u-diaeresis/n-tilde (lead byte 0xC3) to the plain
-// uppercase letter; other multibyte sequences are skipped. Always
+// uppercase letter; other 0xC3 xx pairs are skipped, while the bytes of other multibyte
+// characters are copied through and render as blank positions. Always
 // NUL-terminates (when outSize > 0) and returns the length written.
 size_t normalizeText(const char* in, char* out, size_t outSize);

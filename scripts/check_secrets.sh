@@ -4,10 +4,15 @@
 # Only password macros (*PASS*) are checked: user names are short, generic
 # strings (e.g. "admin") that would match everywhere and are not secret.
 cd "$(git rev-parse --show-toplevel)" || exit 2
-f=""
-for c in secrets.h include/secrets.h; do [ -f "$c" ] && f="$c" && break; done
-if [ -z "$f" ]; then echo "check_secrets: no secrets.h found, nothing to check"; exit 0; fi
-hist=0; [ "$1" = "--history" ] && hist=1
+hist=0
+case "${1:-}" in
+  "") ;;
+  --history) hist=1 ;;
+  *) echo "usage: check_secrets.sh [--history]" >&2; exit 2 ;;
+esac
+files_found=()
+for c in secrets.h include/secrets.h; do [ -f "$c" ] && files_found+=("$c"); done
+if [ ${#files_found[@]} -eq 0 ]; then echo "check_secrets: no secrets.h found, nothing to check"; exit 0; fi
 bad=0
 while IFS= read -r v; do
   [ -z "$v" ] && continue
@@ -32,7 +37,7 @@ while IFS= read -r v; do
   fi
 # Only *PASS* macros are scanned on purpose: user names are not secrets and
 # cause false positives.
-done < <(grep -E '^[[:space:]]*#define[[:space:]]+[A-Z_]*PASS' "$f" | grep -oE '"[^"]*"' | sed -E 's/^"(.*)"$/\1/')
+done < <(cat "${files_found[@]}" | grep -E '^[[:space:]]*#define[[:space:]]+[A-Z_]*PASS' | grep -oE '"[^"]*"' | sed -E 's/^"(.*)"$/\1/')
 if [ $bad -eq 1 ]; then exit 1; fi
 echo "check_secrets: OK"
 exit 0

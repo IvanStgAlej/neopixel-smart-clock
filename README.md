@@ -87,7 +87,7 @@ Command fields for `reloj/cmd`:
 
 ## Versioning
 
-Releases are git tags of the form `vX.Y.Z`. `scripts/version.py` derives `FW_VERSION` from `git describe --tags` at build time (`0.0.0-dev` when there is no tag). The version is published in `reloj/state` (`version`) and as `sw_version` in the Home Assistant device info.
+Releases are git tags of the form `vX.Y.Z`. `scripts/version.py` derives `FW_VERSION` from `git describe --tags` at build time (`0.0.0-dev+<short-hash>`, with `-dirty` appended when the tree has uncommitted changes, when there is no tag; plain `0.0.0-dev` only when git is unavailable). The version is published in `reloj/state` (`version`) and as `sw_version` in the Home Assistant device info.
 
 ## Credits
 
@@ -96,3 +96,5 @@ Enclosure based on the design by matej_f (Thingiverse, CC license). The enclosur
 ## License
 
 [MIT](LICENSE)
+
+**Release binaries and credentials.** Release binaries are built in CI without `include/secrets.h`, so they contain the placeholder credentials from `include/secrets.example.h` (MQTT and OTA password `change-me`, `/update` login `admin`/`change-me`). They are CI artifacts for reference only: do not flash them onto a real clock (the MQTT login would fail and the OTA passwords would be guessable). To flash your own clock, build from source with your own `include/secrets.h`.
