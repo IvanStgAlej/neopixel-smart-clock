@@ -11,6 +11,9 @@
 #include <NTPClient.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <ArduinoOTA.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266HTTPUpdateServer.h>
 
 DisplayEngine  display;
 MQTTManager    mqtt;
@@ -20,6 +23,10 @@ CommandHandler cmdHandler(&display, &mqtt);
 WiFiUDP    ntpUDP;
 NTPClient  timeClient(ntpUDP, NTP_SERVER, NTP_OFFSET, NTP_INTERVAL);
 
+// ── OTA (actualizacion inalambrica) ─────────────────────────────────────────
+ESP8266WebServer        otaServer(80);
+ESP8266HTTPUpdateServer httpUpdater;
+
 // ── Config MQTT (persistida en LittleFS, introducida en el portal) ─────────
 char mqttServer[40] = "192.168.1.1";
 char mqttPort[6]    = "1883";
@@ -28,6 +35,11 @@ char mqttPort[6]    = "1883";
 unsigned long lastClockUpdate = 0;
 unsigned long lastHeartbeat   = 0;
 bool          wifiWasConnected = false;
+bool          mqttWasConnected = false;
+
+// ── DST (horario de verano) ────────────────────────────────────────────────
+// false = invierno (UTC+1), true = verano (UTC+2). Persistido en LittleFS.
+bool          dstSummer        = false;
 
 void saveMQTTConfig() {
   File f = LittleFS.open("/mqtt.json", "w");
@@ -56,10 +68,91 @@ void loadMQTTConfig() {
   f.close();
 }
 
+// ── DST: persistencia y aplicacion del offset NTP ──────────────────────────
+void saveDSTConfig() {
+  File f = LittleFS.open("/dst.json", "w");
+  if (!f) { Serial.println(F("[FS] Error guardando config DST")); return; }
+  JsonDocument doc;
+  doc["summer"] = dstSummer;
+  serializeJson(doc, f);
+  f.close();
+  Serial.printf("[FS] Config DST guardada: %s\n", dstSummer ? "verano" : "invierno");
+}
+
+void loadDSTConfig() {
+  if (!LittleFS.exists("/dst.json")) {
+    Serial.println(F("[FS] Sin config DST previa (por defecto: invierno)"));
+    return;
+  }
+  File f = LittleFS.open("/dst.json", "r");
+  if (!f) return;
+  JsonDocument doc;
+  if (deserializeJson(doc, f) == DeserializationError::Ok) {
+    dstSummer = doc["summer"] | false;
+    Serial.printf("[FS] Config DST cargada: %s\n", dstSummer ? "verano" : "invierno");
+  }
+  f.close();
+}
+
+// Aplica el offset NTP segun dstSummer (efecto inmediato sobre la hora mostrada)
+void applyDSTOffset() {
+  timeClient.setTimeOffset(dstSummer ? NTP_OFFSET_SUMMER : NTP_OFFSET_WINTER);
+}
+
+// Publica el estado del switch DST en HA ("ON" verano / "OFF" invierno)
+void publishDSTState() {
+  mqtt.publish(MQTT_TOPIC_DST_STATE, dstSummer ? "ON" : "OFF", true);
+}
+
+// Procesa el comando del switch DST: ajusta offset, persiste, refresca y publica
+void handleDSTCommand(const char* payload) {
+  bool nuevo = (strcmp(payload, "ON") == 0);
+  if (nuevo != dstSummer) {
+    dstSummer = nuevo;
+    applyDSTOffset();
+    saveDSTConfig();
+    lastClockUpdate = 0;  // fuerza refresco inmediato si esta en modo reloj
+    Serial.printf("[DST] Cambiado a %s\n", dstSummer ? "verano (UTC+2)" : "invierno (UTC+1)");
+  }
+  publishDSTState();
+}
+
 // Callback de MQTT → delega en el manejador de comandos
 void onMQTTMessage(const char* topic, const char* payload) {
   Serial.printf("[MQTT] '%s': %s\n", topic, payload);
+  if (strcmp(topic, MQTT_TOPIC_DST_SET) == 0) {
+    handleDSTCommand(payload);   // el offset NTP vive en este .ino, no en CommandHandler
+    return;
+  }
   cmdHandler.handle(topic, payload);
+}
+
+// Configura las dos vias de actualizacion inalambrica (ArduinoOTA + web).
+void setupOTA() {
+  // 1) ArduinoOTA: el reloj aparece como "puerto de red" en el Arduino IDE.
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+  ArduinoOTA.onStart([]() {
+    display.clear();   // apaga los LEDs mientras se actualiza
+    Serial.println(F("[OTA] Actualizacion iniciada"));
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println(F("\n[OTA] Completada, reiniciando..."));
+  });
+  ArduinoOTA.onProgress([](unsigned int prog, unsigned int total) {
+    Serial.printf("[OTA] %u%%\r", (prog * 100) / total);
+  });
+  ArduinoOTA.onError([](ota_error_t err) {
+    Serial.printf("[OTA] Error %u\n", err);
+  });
+  ArduinoOTA.begin();
+
+  // 2) Web updater integrado del core: http://<ip>/update (sube un .bin)
+  httpUpdater.setup(&otaServer, "/update", OTA_WEB_USER, OTA_WEB_PASS);
+  otaServer.begin();
+
+  Serial.printf("[OTA] Listo. IDE: '%s'  |  Web: http://%s/update\n",
+                OTA_HOSTNAME, WiFi.localIP().toString().c_str());
 }
 
 void setup() {
@@ -73,6 +166,7 @@ void setup() {
     LittleFS.begin();
   }
   loadMQTTConfig();
+  loadDSTConfig();
 
   display.begin();
 
@@ -102,18 +196,20 @@ void setup() {
 
   // ── NTP ──────────────────────────────────────────────────────────────────
   timeClient.begin();
+  applyDSTOffset();   // aplica verano/invierno cargado de LittleFS antes del primer fetch
   timeClient.update();
   Serial.printf("[NTP] Hora: %02d:%02d:%02d\n",
                 timeClient.getHours(),
                 timeClient.getMinutes(),
                 timeClient.getSeconds());
 
-  // ── MQTT ──────────────────────────────────────────────────────────────────
-  mqtt.begin(mqttServer, atoi(mqttPort), onMQTTMessage);
+  // ── OTA ────────────────────────────────────────────────────────────────────
+  setupOTA();
 
-  // Estado inicial: apagado, a la espera de comandos de HA (spec 4.2)
-  cmdHandler.publishState();
-  cmdHandler.publishLightState();
+  // ── MQTT ──────────────────────────────────────────────────────────────────
+  // La conexion real ocurre en loop(); el estado inicial se publica alli al
+  // detectar la (re)conexion (spec 4.2: arranca apagado a la espera de HA).
+  mqtt.begin(mqttServer, atoi(mqttPort), onMQTTMessage);
 }
 
 void loop() {
@@ -129,10 +225,23 @@ void loop() {
   wifiWasConnected = wifiNow;
 
   if (wifiNow) {
+    ArduinoOTA.handle();        // atiende subidas desde el IDE
+    otaServer.handleClient();   // atiende la pagina web /update
     mqtt.loop();
     timeClient.update();
   }
+
+  // Al (re)conectar MQTT, publicar el estado para que HA no lo vea "desconocido"
+  bool mqttNow = mqtt.isConnected();
+  if (mqttNow && !mqttWasConnected) {
+    cmdHandler.publishLightState();
+    cmdHandler.publishState();
+    publishDSTState();   // sincroniza el switch "Horario de verano" en HA
+  }
+  mqttWasConnected = mqttNow;
+
   display.tickScroll();
+  cmdHandler.tickTimer();   // cuenta atras y parpadeo final (no depende del WiFi)
 
   // ── Modo reloj: refresca al entrar y luego cada minuto (solo con WiFi) ────
   if (cmdHandler.isClockMode()) {

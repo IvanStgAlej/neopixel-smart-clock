@@ -1,0 +1,7 @@
+secrets.h
+include/secrets.h
+.pio/
+.vscode/
+*.bin
+build/
+.superpowers/

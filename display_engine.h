@@ -31,6 +31,7 @@ private:
   uint32_t _baseColor = 0xFFFFFF; // blanco por defecto
   void _renderDigit(int position, int digit, uint32_t color);
   void _renderChar(int position, char c, uint32_t color);
+  static String _normalize(const char* text);  // UTF-8 (acentos, ñ) → ASCII sin tilde
 
   // Estado scroll
   bool     _scrolling      = false;

@@ -20,7 +20,7 @@ static const uint8_t DIGIT_MAP[10][15] = {
 
 // ── Tabla de letras y símbolos ────────────────────────────────────────────
 // Mapeo verificado: G=0,1 F=2,3 A=4,5 B=6,7 C=8,9 D=10,11 E=12,13
-static const char CHAR_KEYS[] = " -ABCDEFGHIJLNOPRSTUYZ";
+static const char CHAR_KEYS[] = " -ABCDEFGHIJLNOPRSTUYZKMQVWX";
 static const uint8_t CHAR_MAP[][15] = {
   { 0, 0,0, 0,0, 0,0, 0,0,  0,0,  0,0,  0,0},   // ' ' (espacio)
   { 2, 0,1, 0,0, 0,0, 0,0,  0,0,  0,0,  0,0},   // '-'  G
@@ -44,6 +44,13 @@ static const uint8_t CHAR_MAP[][15] = {
   {10, 2,3, 6,7, 8,9, 10,11, 12,13, 0,0, 0,0},  // 'U'
   {10, 0,1, 2,3, 6,7, 8,9, 10,11,  0,0, 0,0},   // 'Y'
   {10, 0,1, 4,5, 6,7, 10,11, 12,13, 0,0, 0,0},  // 'Z'
+  // ── Letras anadidas: aproximaciones 7-seg (completan el alfabeto) ──────────
+  { 8, 2,3, 0,1, 6,7, 12,13, 0,0, 0,0, 0,0},    // 'K'  F,G,B,E
+  {10, 4,5, 6,7, 8,9, 12,13, 2,3, 0,0, 0,0},    // 'M'  A,B,C,E,F (~Pi)
+  {10, 4,5, 6,7, 8,9, 2,3, 0,1, 0,0, 0,0},      // 'Q'  A,B,C,F,G (~9)
+  { 6, 8,9, 10,11, 12,13, 0,0, 0,0, 0,0, 0,0},  // 'V'  C,D,E (cubeta baja)
+  {12, 6,7, 8,9, 10,11, 12,13, 2,3, 0,1, 0,0},  // 'W'  B,C,D,E,F,G
+  { 8, 6,7, 8,9, 12,13, 2,3, 0,0, 0,0, 0,0},    // 'X'  B,C,E,F
 };
 
 // ── Rotación 180° por dígito ──────────────────────────────────────────────
@@ -59,6 +66,16 @@ static inline uint16_t mapLed(int offset, uint8_t rel) {
   return offset + ROT180[rel];
 #else
   return offset + rel;
+#endif
+}
+
+// Offset del bloque de 14 LEDs para una posición lógica (0=izq … 3=der).
+// Con REVERSE_DIGITS, el orden de los dígitos se invierte (reloj rotado 180°).
+static inline int slotOffset(int position) {
+#if REVERSE_DIGITS
+  return (3 - position) * 14;
+#else
+  return position * 14;
 #endif
 }
 
@@ -92,7 +109,7 @@ void DisplayEngine::setBaseColor(uint32_t color) {
 void DisplayEngine::_renderDigit(int position, int digit, uint32_t color) {
   if (position < 0 || position > 3) return;
   if (digit < 0 || digit > 9) return;
-  int offset = position * 14;
+  int offset = slotOffset(position);
   uint8_t count = DIGIT_MAP[digit][0];
   for (uint8_t i = 1; i <= count; i++) {
     _pixels.setPixelColor(mapLed(offset, DIGIT_MAP[digit][i]), color);
@@ -132,7 +149,7 @@ void DisplayEngine::_renderChar(int position, char c, uint32_t color) {
     return;
   }
 
-  int offset = position * 14;
+  int offset = slotOffset(position);
   for (int i = 0; CHAR_KEYS[i] != '\0'; i++) {
     if (CHAR_KEYS[i] == c) {
       uint8_t count = CHAR_MAP[i][0];
@@ -145,13 +162,39 @@ void DisplayEngine::_renderChar(int position, char c, uint32_t color) {
   // Carácter no encontrado → posición en blanco
 }
 
+// Convierte acentos/ñ (UTF-8, lead byte 0xC3) a su letra ASCII sin tilde.
+// El display es de 7 seg. y solo tiene glifos ASCII; los multibyte se colapsan
+// a un unico caracter para que no ocupen dos posiciones ni salgan como basura.
+String DisplayEngine::_normalize(const char* text) {
+  String out;
+  for (const unsigned char* p = (const unsigned char*)text; *p; p++) {
+    if (*p == 0xC3 && *(p + 1)) {
+      unsigned char b = *(++p);            // consume el segundo byte
+      switch (b) {
+        case 0x81: case 0xA1: out += 'A'; break;  // Á á
+        case 0x89: case 0xA9: out += 'E'; break;  // É é
+        case 0x8D: case 0xAD: out += 'I'; break;  // Í í
+        case 0x93: case 0xB3: out += 'O'; break;  // Ó ó
+        case 0x9A: case 0xBA: out += 'U'; break;  // Ú ú
+        case 0x9C: case 0xBC: out += 'U'; break;  // Ü ü
+        case 0x91: case 0xB1: out += 'N'; break;  // Ñ ñ
+        default: break;                            // otros: se omiten
+      }
+    } else {
+      out += (char)*p;
+    }
+  }
+  return out;
+}
+
 void DisplayEngine::showText(const char* text, uint32_t color) {
   _scrolling = false;
   _pixels.clear();
   uint32_t c = (color != 0) ? color : _baseColor;
-  for (int i = 0; i < 4; i++) {
-    if (text[i] == '\0') break;
-    _renderChar(i, text[i], c);
+  String t = _normalize(text);
+  int n = t.length();
+  for (int i = 0; i < 4 && i < n; i++) {
+    _renderChar(i, t[i], c);
   }
   _pixels.show();
 }
@@ -181,7 +224,7 @@ void DisplayEngine::showNumber(int number, uint32_t color) {
 
 void DisplayEngine::startScroll(const char* text, uint32_t color, int speedMs) {
   _scrollText = "    ";
-  _scrollText += text;
+  _scrollText += _normalize(text);
   _scrollText += "    ";
   _scrollColor   = (color != 0) ? color : _baseColor;
   _scrollSpeedMs = (speedMs > 0) ? speedMs : SCROLL_DEFAULT_MS;
@@ -207,11 +250,10 @@ void DisplayEngine::tickScroll() {
 
   _scrollPos++;
 
+  // Bucle continuo: al llegar al final (texto + relleno) vuelve a empezar.
+  // El relleno de 4 espacios delante y detras crea una pausa limpia entre vueltas.
   if (_scrollPos >= (int)_scrollText.length()) {
-    _scrolling = false;
-    _pixels.clear();
-    _pixels.show();
-    Serial.println(F("[DISPLAY] Scroll terminado"));
+    _scrollPos = 0;
   }
 }
 

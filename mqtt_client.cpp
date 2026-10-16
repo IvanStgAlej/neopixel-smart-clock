@@ -46,7 +46,7 @@ bool MQTTManager::_connect() {
   // Last Will: si el ESP se cae, el broker publica "offline" en reloj/available
   bool ok = _client.connect(
     MQTT_CLIENT_ID,
-    nullptr, nullptr,            // sin usuario/contrasena
+    MQTT_USER, MQTT_PASS,        // login dedicado del broker
     MQTT_TOPIC_AVAILABLE,        // topic del Last Will
     0, true,                     // QoS=0, retain=true
     "offline"                    // payload del Last Will
@@ -56,6 +56,7 @@ bool MQTTManager::_connect() {
     Serial.println(F(" OK"));
     _client.subscribe(MQTT_TOPIC_LIGHT_SET);
     _client.subscribe(MQTT_TOPIC_CMD);
+    _client.subscribe(MQTT_TOPIC_DST_SET);
     publish(MQTT_TOPIC_AVAILABLE, "online", true);
     publishDiscovery();
     Serial.println(F("[MQTT] Suscrito a topics"));
@@ -65,32 +66,113 @@ bool MQTTManager::_connect() {
   return ok;
 }
 
-void MQTTManager::publishDiscovery() {
-  // Payload de MQTT Discovery: registra una entidad Light (JSON schema) en HA
-  JsonDocument doc;
-  doc["name"]               = "Reloj NeoPixel";
-  doc["unique_id"]          = "reloj_neopixel_001";
-  doc["schema"]             = "json";
-  doc["state_topic"]        = MQTT_TOPIC_LIGHT_STATE;
-  doc["command_topic"]      = MQTT_TOPIC_LIGHT_SET;
-  doc["brightness"]         = true;
-  doc["color_mode"]         = true;
-  doc["availability_topic"] = MQTT_TOPIC_AVAILABLE;
-
-  JsonArray modes = doc["supported_color_modes"].to<JsonArray>();
-  modes.add("rgb");
-
+// Helper local: anade el bloque "device" comun a todas las entidades, para que
+// HA las agrupe bajo el mismo dispositivo (identifiers "reloj_neopixel").
+static void addDevice(JsonDocument& doc) {
   JsonObject device = doc["device"].to<JsonObject>();
   device["name"]         = "Reloj NeoPixel";
   device["model"]        = "ESP8266 NodeMCU";
   device["manufacturer"] = "DIY";
-  JsonArray ids = device["identifiers"].to<JsonArray>();
-  ids.add("reloj_neopixel");
+  device["identifiers"].to<JsonArray>().add("reloj_neopixel");
+}
 
+void MQTTManager::_publishJson(const char* topic, JsonDocument& doc) {
   char buf[512];
   size_t n = serializeJson(doc, buf, sizeof(buf));
-  _client.publish(MQTT_DISCOVERY_TOPIC, (const uint8_t*)buf, n, true); // retain
-  Serial.println(F("[MQTT] Discovery publicado"));
+  _client.publish(topic, (const uint8_t*)buf, n, true);  // retain
+}
+
+void MQTTManager::publishDiscovery() {
+  // ── Light (JSON schema): on/off, brillo, color ───────────────────────────
+  {
+    JsonDocument doc;
+    doc["name"]               = "Reloj NeoPixel";
+    doc["unique_id"]          = "reloj_neopixel_001";
+    doc["schema"]             = "json";
+    doc["state_topic"]        = MQTT_TOPIC_LIGHT_STATE;
+    doc["command_topic"]      = MQTT_TOPIC_LIGHT_SET;
+    doc["brightness"]         = true;
+    doc["color_mode"]         = true;
+    doc["availability_topic"] = MQTT_TOPIC_AVAILABLE;
+    doc["supported_color_modes"].to<JsonArray>().add("rgb");
+    addDevice(doc);
+    _publishJson(MQTT_DISCOVERY_TOPIC, doc);
+  }
+
+  // ── Switch "Horario de verano" (DST): ON=verano UTC+2 / OFF=invierno UTC+1 ─
+  {
+    JsonDocument doc;
+    doc["name"]               = "Horario de verano";
+    doc["unique_id"]          = "reloj_neopixel_dst";
+    doc["command_topic"]      = MQTT_TOPIC_DST_SET;
+    doc["state_topic"]        = MQTT_TOPIC_DST_STATE;
+    doc["payload_on"]         = "ON";
+    doc["payload_off"]        = "OFF";
+    doc["availability_topic"] = MQTT_TOPIC_AVAILABLE;
+    doc["icon"]               = "mdi:weather-sunny";
+    addDevice(doc);
+    _publishJson(MQTT_DST_DISCOVERY_TOPIC, doc);
+  }
+
+  // ── Boton "Modo reloj": publica {"tipo":"hora"} en reloj/cmd ──────────────
+  {
+    JsonDocument doc;
+    doc["name"]               = "Modo reloj";
+    doc["unique_id"]          = "reloj_neopixel_hora";
+    doc["command_topic"]      = MQTT_TOPIC_CMD;
+    doc["payload_press"]      = "{\"tipo\":\"hora\"}";
+    doc["availability_topic"] = MQTT_TOPIC_AVAILABLE;
+    doc["icon"]               = "mdi:clock-outline";
+    addDevice(doc);
+    _publishJson(MQTT_DISC_BTN_HORA, doc);
+  }
+
+  // ── Texto "Mensaje" (fijo): {"tipo":"texto","valor":"..."} ────────────────
+  {
+    JsonDocument doc;
+    doc["name"]               = "Mensaje";
+    doc["unique_id"]          = "reloj_neopixel_texto";
+    doc["command_topic"]      = MQTT_TOPIC_CMD;
+    doc["command_template"]   = "{\"tipo\":\"texto\",\"valor\":\"{{ value }}\"}";
+    doc["availability_topic"] = MQTT_TOPIC_AVAILABLE;
+    doc["icon"]               = "mdi:message-text";
+    doc["max"]                = 32;
+    addDevice(doc);
+    _publishJson(MQTT_DISC_TXT_FIJO, doc);
+  }
+
+  // ── Texto "Mensaje desplazante": {"tipo":"scroll","valor":"..."} ──────────
+  {
+    JsonDocument doc;
+    doc["name"]               = "Mensaje desplazante";
+    doc["unique_id"]          = "reloj_neopixel_scroll";
+    doc["command_topic"]      = MQTT_TOPIC_CMD;
+    doc["command_template"]   = "{\"tipo\":\"scroll\",\"valor\":\"{{ value }}\"}";
+    doc["availability_topic"] = MQTT_TOPIC_AVAILABLE;
+    doc["icon"]               = "mdi:message-arrow-right";
+    doc["max"]                = 64;
+    addDevice(doc);
+    _publishJson(MQTT_DISC_TXT_SCROLL, doc);
+  }
+
+  // ── Numero: {"tipo":"numero","valor":"..."} ───────────────────────────────
+  {
+    JsonDocument doc;
+    doc["name"]               = "Numero";
+    doc["unique_id"]          = "reloj_neopixel_numero";
+    doc["command_topic"]      = MQTT_TOPIC_CMD;
+    doc["command_template"]   = "{\"tipo\":\"numero\",\"valor\":\"{{ value | int }}\"}";
+    doc["availability_topic"] = MQTT_TOPIC_AVAILABLE;
+    doc["icon"]               = "mdi:numeric";
+    doc["min"]                = 0;
+    doc["max"]                = 9999;
+    doc["step"]               = 1;
+    doc["mode"]               = "box";
+    addDevice(doc);
+    _publishJson(MQTT_DISC_NUM, doc);
+  }
+
+  Serial.println(F("[MQTT] Discovery publicado (light, switch, boton, 2x texto, numero)"));
 }
 
 void MQTTManager::_mqttCallback(char* topic, byte* payload, unsigned int length) {
