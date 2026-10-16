@@ -1,12 +1,12 @@
 // countdown.cpp
 #include "countdown.h"
 
-Countdown::Countdown(unsigned long alarmMs, unsigned long blinkMs)
+Countdown::Countdown(uint32_t alarmMs, uint32_t blinkMs)
   : _alarmMs(alarmMs), _blinkMs(blinkMs) {}
 
-void Countdown::start(unsigned long nowMs, long seconds) {
+void Countdown::start(uint32_t nowMs, long seconds) {
   _state = State::Running;
-  _endMs = nowMs + (unsigned long)seconds * 1000UL;
+  _endMs = nowMs + (uint32_t)seconds * 1000u;
   _lastSecs = -1;
   _lastBlink = -1;
 }
@@ -15,11 +15,11 @@ void Countdown::cancel() { _state = State::Idle; }
 
 bool Countdown::active() const { return _state != State::Idle; }
 
-CountdownFrame Countdown::tick(unsigned long nowMs) {
+CountdownFrame Countdown::tick(uint32_t nowMs) {
   if (_state == State::Idle) return {CountdownPhase::Idle, 0, false};
 
   if (_state == State::Running) {
-    long remainingMs = (long)(_endMs - nowMs);  // signed: survives millis() wrap
+    long remainingMs = (int32_t)(_endMs - nowMs);  // signed: survives millis() wrap
     if (remainingMs > 0) {
       long secs = (remainingMs + 999) / 1000;   // round up: shows 1 until the end
       bool changed = secs != _lastSecs;
@@ -31,7 +31,7 @@ CountdownFrame Countdown::tick(unsigned long nowMs) {
     _lastBlink = -1;
   }
 
-  unsigned long elapsed = nowMs - _alarmStartMs;
+  uint32_t elapsed = nowMs - _alarmStartMs;
   if (elapsed >= _alarmMs) {
     _state = State::Idle;
     return {CountdownPhase::Finished, 0, true};

@@ -1,5 +1,6 @@
 // countdown.h — Countdown state machine driven by an external millis() clock
 #pragma once
+#include <stdint.h>
 
 enum class CountdownPhase { Idle, Running, AlarmOn, AlarmOff, Finished };
 
@@ -11,19 +12,19 @@ struct CountdownFrame {
 
 class Countdown {
 public:
-  Countdown(unsigned long alarmMs, unsigned long blinkMs);
-  void start(unsigned long nowMs, long seconds);
+  Countdown(uint32_t alarmMs, uint32_t blinkMs);
+  void start(uint32_t nowMs, long seconds);
   void cancel();
   bool active() const;  // Running, AlarmOn or AlarmOff
-  CountdownFrame tick(unsigned long nowMs);
+  CountdownFrame tick(uint32_t nowMs);
 
 private:
   enum class State { Idle, Running, Alarm };
-  unsigned long _alarmMs;
-  unsigned long _blinkMs;
+  uint32_t _alarmMs;
+  uint32_t _blinkMs;
   State _state = State::Idle;
-  unsigned long _endMs = 0;
-  unsigned long _alarmStartMs = 0;
+  uint32_t _endMs = 0;
+  uint32_t _alarmStartMs = 0;
   long _lastSecs = -1;
   int _lastBlink = -1;
 };

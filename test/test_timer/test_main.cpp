@@ -27,7 +27,7 @@ void test_clamp() {
   TEST_ASSERT_EQUAL(300, clampTimerSeconds(300));
 }
 
-static void expectFrame(Countdown& c, unsigned long now, CountdownPhase p, long secs, bool changed) {
+static void expectFrame(Countdown& c, uint32_t now, CountdownPhase p, long secs, bool changed) {
   CountdownFrame f = c.tick(now);
   TEST_ASSERT_EQUAL((int)p, (int)f.phase);
   TEST_ASSERT_EQUAL(secs, f.secondsLeft);
@@ -52,8 +52,8 @@ void test_countdown_sequence() {
 
 void test_millis_overflow() {
   Countdown c(10000, 500);
-  c.start(0xFFFFFC18UL /* -1000 */, 5);
-  CountdownFrame f = c.tick(0xFFFFFFFFUL);
+  c.start((uint32_t)0xFFFFFC18u /* -1000 */, 5);
+  CountdownFrame f = c.tick((uint32_t)0xFFFFFFFFu);
   TEST_ASSERT_EQUAL((int)CountdownPhase::Running, (int)f.phase);
   TEST_ASSERT_EQUAL(5, f.secondsLeft);
   f = c.tick(3000);
