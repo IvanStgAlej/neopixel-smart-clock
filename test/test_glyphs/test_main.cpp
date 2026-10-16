@@ -41,7 +41,7 @@ static const uint8_t REF_CHAR_MAP[][15] = {
   {10, 2,3, 6,7, 8,9, 10,11, 12,13, 0,0, 0,0},  // 'U'
   {10, 0,1, 2,3, 6,7, 8,9, 10,11,  0,0, 0,0},   // 'Y'
   {10, 0,1, 4,5, 6,7, 10,11, 12,13, 0,0, 0,0},  // 'Z'
-  // ── Letras anadidas: aproximaciones 7-seg (completan el alfabeto) ──────────
+  // ── Added letters: 7-segment approximations (complete the alphabet) ────────
   { 8, 2,3, 0,1, 6,7, 12,13, 0,0, 0,0, 0,0},    // 'K'  F,G,B,E
   {10, 4,5, 6,7, 8,9, 12,13, 2,3, 0,0, 0,0},    // 'M'  A,B,C,E,F (~Pi)
   {10, 4,5, 6,7, 8,9, 2,3, 0,1, 0,0, 0,0},      // 'Q'  A,B,C,F,G (~9)

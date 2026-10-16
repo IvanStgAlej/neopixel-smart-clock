@@ -1,4 +1,4 @@
-// command_handler.h — Parsea JSON de MQTT y delega al DisplayEngine
+// command_handler.h — Parses MQTT JSON and delegates to the DisplayEngine
 #pragma once
 #include <Arduino.h>
 #include "display_engine.h"
@@ -10,18 +10,18 @@ class CommandHandler {
 public:
   CommandHandler(DisplayEngine* display, MQTTManager* mqtt);
 
-  // Llamar desde el callback MQTT
+  // Call from the MQTT callback
   void handle(const char* topic, const char* payload);
 
-  // Feedback de estado
+  // State feedback
   void publishState();
   void publishLightState();
 
-  // Modo reloj (lo conduce el loop principal con la hora NTP)
+  // Clock mode (driven by the main loop with the NTP time)
   bool isClockMode() const;
   void updateClock(int hours, int minutes);
 
-  // Temporizador: llamar en cada vuelta del loop (repinta 1 vez por segundo)
+  // Timer: call on every loop iteration (repaints once per second)
   void tickTimer();
 
 private:
@@ -33,22 +33,22 @@ private:
   String  _value      = "";
   String  _color      = "#FFFFFF";
   uint8_t _brightness = NEO_BRIGHTNESS;
-  int     _lastHours   = -1;   // ultima hora NTP pintada (para repintar al cambiar color)
+  int     _lastHours   = -1;   // last NTP time drawn (to repaint when the color changes)
   int     _lastMinutes = -1;
 
   // Timer state (countdown state machine lives in clock_core)
   Countdown     _countdown;
   uint32_t      _timerColor     = 0;
   bool          _timerRepaint   = false;  // force a repaint on the next tick (e.g. after restore)
-  // Lo que se mostraba antes del temporizador, para volver al acabar o cancelar
+  // What was shown before the timer, to return to when it ends or is cancelled
   bool          _prevPowered    = false;
   String        _prevMode       = "hora";
   String        _prevValue      = "";
 
   void _startTimer(long seconds, uint32_t color);
-  void _endTimer(bool restore);  // restore=true → vuelve a lo anterior y lo repinta
+  void _endTimer(bool restore);  // restore=true → go back to the previous state and repaint it
 
   void _handleLightSet(const char* payload);
   void _handleCmd(const char* payload);
-  void _restoreDisplay();   // re-renderiza el modo/contenido actual (al encender o cambiar color)
+  void _restoreDisplay();   // re-render the current mode/content (on power-on or color change)
 };

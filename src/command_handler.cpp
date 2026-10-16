@@ -25,10 +25,10 @@ void CommandHandler::_handleLightSet(const char* payload) {
   if (doc["state"].is<const char*>()) {
     String state = doc["state"].as<String>();
     if (state == "OFF") {
-      if (_countdown.active()) _endTimer(false);  // al encender se vuelve a lo de antes del temporizador
+      if (_countdown.active()) _endTimer(false);  // on power-on, return to what was shown before the timer
       _powered = false;
       _display->clear();
-      // NO se toca _mode/_value/_color: se recuerda para restaurarlo al encender.
+      // _mode/_value/_color are NOT touched: remembered to restore on power-on.
       publishLightState();
       publishState();
       return;
@@ -36,13 +36,13 @@ void CommandHandler::_handleLightSet(const char* payload) {
     _powered = true;
   }
 
-  // Brillo (se aplica en vivo)
+  // Brightness (applied live)
   if (doc["brightness"].is<int>()) {
     _brightness = doc["brightness"].as<uint8_t>();
     _display->setBrightness(_brightness);
   }
 
-  // Color RGB → guardamos hex y lo fijamos como color base
+  // RGB color → store as hex and set it as the base color
   if (doc["color"].is<JsonObject>()) {
     uint8_t r = doc["color"]["r"] | 255;
     uint8_t g = doc["color"]["g"] | 255;
@@ -53,7 +53,7 @@ void CommandHandler::_handleLightSet(const char* payload) {
     _display->setBaseColor(Adafruit_NeoPixel::Color(r, g, b));
   }
 
-  // Encendido → re-renderiza lo que estaba mostrando antes (o el nuevo color/brillo)
+  // Powered on → re-render what was shown before (or the new color/brightness)
   if (_powered) {
     _display->setBrightness(_brightness);
     _restoreDisplay();
@@ -63,8 +63,8 @@ void CommandHandler::_handleLightSet(const char* payload) {
   publishState();
 }
 
-// Re-renderiza el contenido segun el modo actual. Se usa al encender la luz
-// (para recuperar lo que se mostraba antes de apagar) y al cambiar color/brillo.
+// Re-renders the content for the current mode. Used on power-on (to recover
+// what was shown before switching off) and when color/brightness change.
 void CommandHandler::_restoreDisplay() {
   uint32_t color = DisplayEngine::hexToColor(_color.c_str());
   if (_mode == "texto") {
@@ -74,14 +74,14 @@ void CommandHandler::_restoreDisplay() {
   } else if (_mode == "scroll") {
     _display->startScroll(_value.c_str(), color, SCROLL_DEFAULT_MS);
   } else if (_mode == "hora") {
-    // Repinta al instante con la ultima hora cacheada (showTime usa el color base,
-    // ya actualizado por setBaseColor). El loop seguira refrescando cada minuto.
+    // Repaint immediately with the last cached time (showTime uses the base color,
+    // already updated by setBaseColor). The loop keeps refreshing every minute.
     if (_lastHours >= 0) _display->showTime(_lastHours, _lastMinutes);
   } else if (_mode == "temporizador") {
-    // Fuerza a tickTimer a repintar en la siguiente vuelta del loop
+    // Force tickTimer to repaint on the next loop iteration
     _timerRepaint = true;
   } else {
-    // Sin contenido previo (arranque/apagado) → por defecto, modo reloj.
+    // No previous content (boot/off) → default to clock mode.
     _mode = "hora";
   }
 }
@@ -90,19 +90,19 @@ void CommandHandler::_handleCmd(const char* payload) {
   Command cmd = parseCommand(payload, SCROLL_DEFAULT_MS);  // ~290 B on the stack
 
   if (cmd.type == CommandType::Invalid) {
-    Serial.println(F("[CMD] JSON invalido"));
+    Serial.println(F("[CMD] Invalid JSON"));
     return;
   }
   if (cmd.type == CommandType::Unknown) {
-    Serial.println(F("[CMD] Tipo desconocido"));
+    Serial.println(F("[CMD] Unknown type"));
     return;
   }
 
-  // Cualquier otro comando sustituye al temporizador en marcha
+  // Any other command replaces the running timer
   if (_countdown.active() && cmd.type != CommandType::Timer) _endTimer(false);
 
-  // Color del comando: sobreescribe temporalmente el color de la entidad Light
-  // (el temporizador no lo toca, para que al acabar se vuelva al color de antes)
+  // Command color: temporarily overrides the Light entity color
+  // (the timer leaves it alone, so the previous color returns when it ends)
   uint32_t color = 0;
   if (cmd.type != CommandType::Timer && cmd.hasColor) {
     color  = DisplayEngine::hexToColor(cmd.color);
@@ -121,7 +121,7 @@ void CommandHandler::_handleCmd(const char* payload) {
       _powered = true;
       _mode = "hora";
       _value = "";
-      // El render lo hace el loop principal (updateClock) que tiene la hora NTP.
+      // Rendering is done by the main loop (updateClock), which has the NTP time.
       break;
 
     case CommandType::Text:
@@ -146,9 +146,9 @@ void CommandHandler::_handleCmd(const char* payload) {
       break;
 
     case CommandType::Timer:
-      // {"tipo":"temporizador","segundos":300[,"color":"#RRGGBB"]} · segundos=0 cancela
+      // {"tipo":"temporizador","segundos":300[,"color":"#RRGGBB"]} · segundos=0 cancels
       if (cmd.seconds <= 0) {
-        if (!_countdown.active()) return;  // nada que cancelar
+        if (!_countdown.active()) return;  // nothing to cancel
         _endTimer(true);
       } else {
         uint32_t tcolor = DisplayEngine::hexToColor(cmd.hasColor ? cmd.color : _color.c_str());
@@ -206,7 +206,7 @@ bool CommandHandler::isClockMode() const {
 
 void CommandHandler::updateClock(int hours, int minutes) {
   if (!isClockMode()) return;
-  _lastHours   = hours;     // cache para repintar al instante si cambia color/brillo
+  _lastHours   = hours;     // cache to repaint immediately if color/brightness change
   _lastMinutes = minutes;
   char val[6];
   snprintf(val, sizeof(val), "%02d%02d", hours, minutes);
@@ -214,10 +214,10 @@ void CommandHandler::updateClock(int hours, int minutes) {
   _display->showTime(hours, minutes);
 }
 
-// ── Temporizador ────────────────────────────────────────────────────────────
+// ── Timer ───────────────────────────────────────────────────────────────────
 
 void CommandHandler::_startTimer(long seconds, uint32_t color) {
-  // Si ya habia uno en marcha se reinicia, pero se conserva lo que habia antes de el
+  // If one is already running it restarts, but what was shown before it is preserved
   if (!_countdown.active()) {
     _prevPowered = _powered;
     _prevMode    = _mode;
@@ -230,7 +230,7 @@ void CommandHandler::_startTimer(long seconds, uint32_t color) {
   _value        = String(seconds);
   _timerRepaint = true;  // first tick paints immediately
   _display->setBrightness(_brightness);
-  Serial.printf("[TIMER] Inicio: %ld s\n", seconds);
+  Serial.printf("[TIMER] Started: %ld s\n", seconds);
 }
 
 void CommandHandler::_endTimer(bool restore) {
@@ -243,7 +243,7 @@ void CommandHandler::_endTimer(bool restore) {
   _powered = _prevPowered;
   if (_powered) _restoreDisplay();
   else          _display->clear();
-  Serial.println(F("[TIMER] Fin, vuelta al modo anterior"));
+  Serial.println(F("[TIMER] Done, back to previous mode"));
 }
 
 void CommandHandler::tickTimer() {
@@ -266,7 +266,7 @@ void CommandHandler::tickTimer() {
     case CountdownPhase::AlarmOff:
       if (_value != "0") {  // first alarm frame: reached 0
         _value = "0";
-        Serial.println(F("[TIMER] Llego a 0"));
+        Serial.println(F("[TIMER] Reached 0"));
         publishState();
       }
       if (paint) {

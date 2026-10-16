@@ -14,8 +14,8 @@ void MQTTManager::begin(const char* server, int port, MQTTMessageCallback callba
   _userCallback = callback;
   _client.setServer(server, port);
   _client.setCallback(_mqttCallback);
-  _client.setBufferSize(512);   // Discovery payload no cabe en los 256 por defecto
-  Serial.printf("[MQTT] Configurado: %s:%d\n", server, port);
+  _client.setBufferSize(512);   // Discovery payload doesn't fit in the default 256
+  Serial.printf("[MQTT] Configured: %s:%d\n", server, port);
 }
 
 void MQTTManager::loop() {
@@ -41,15 +41,15 @@ void MQTTManager::publish(const char* topic, const char* payload, bool retain) {
 }
 
 bool MQTTManager::_connect() {
-  Serial.print(F("[MQTT] Conectando..."));
+  Serial.print(F("[MQTT] Connecting..."));
 
-  // Last Will: si el ESP se cae, el broker publica "offline" en reloj/available
+  // Last Will: if the ESP drops, the broker publishes "offline" on reloj/available
   bool ok = _client.connect(
     MQTT_CLIENT_ID,
-    MQTT_USER, MQTT_PASS,        // login dedicado del broker
-    MQTT_TOPIC_AVAILABLE,        // topic del Last Will
+    MQTT_USER, MQTT_PASS,        // dedicated broker login
+    MQTT_TOPIC_AVAILABLE,        // Last Will topic
     0, true,                     // QoS=0, retain=true
-    "offline"                    // payload del Last Will
+    "offline"                    // Last Will payload
   );
 
   if (ok) {
@@ -59,15 +59,15 @@ bool MQTTManager::_connect() {
     _client.subscribe(MQTT_TOPIC_DST_SET);
     publish(MQTT_TOPIC_AVAILABLE, "online", true);
     publishDiscovery();
-    Serial.println(F("[MQTT] Suscrito a topics"));
+    Serial.println(F("[MQTT] Subscribed to topics"));
   } else {
-    Serial.printf(" FALLO (rc=%d)\n", _client.state());
+    Serial.printf(" FAILED (rc=%d)\n", _client.state());
   }
   return ok;
 }
 
-// Helper local: anade el bloque "device" comun a todas las entidades, para que
-// HA las agrupe bajo el mismo dispositivo (identifiers "reloj_neopixel").
+// Local helper: adds the "device" block shared by all entities so that HA
+// groups them under the same device (identifiers "reloj_neopixel").
 static void addDevice(JsonDocument& doc) {
   JsonObject device = doc["device"].to<JsonObject>();
   device["name"]         = "Reloj NeoPixel";
@@ -84,7 +84,7 @@ void MQTTManager::_publishJson(const char* topic, JsonDocument& doc) {
 }
 
 void MQTTManager::publishDiscovery() {
-  // ── Light (JSON schema): on/off, brillo, color ───────────────────────────
+  // ── Light (JSON schema): on/off, brightness, color ───────────────────────
   {
     JsonDocument doc;
     doc["name"]               = "Reloj NeoPixel";
@@ -100,7 +100,7 @@ void MQTTManager::publishDiscovery() {
     _publishJson(MQTT_DISCOVERY_TOPIC, doc);
   }
 
-  // ── Switch "Horario de verano" (DST): ON=verano UTC+2 / OFF=invierno UTC+1 ─
+  // ── "Horario de verano" switch (DST): ON = summer UTC+2 / OFF = winter UTC+1 ─
   {
     JsonDocument doc;
     doc["name"]               = "Horario de verano";
@@ -115,7 +115,7 @@ void MQTTManager::publishDiscovery() {
     _publishJson(MQTT_DST_DISCOVERY_TOPIC, doc);
   }
 
-  // ── Boton "Modo reloj": publica {"tipo":"hora"} en reloj/cmd ──────────────
+  // ── "Modo reloj" button: publishes {"tipo":"hora"} to reloj/cmd ───────────
   {
     JsonDocument doc;
     doc["name"]               = "Modo reloj";
@@ -128,7 +128,7 @@ void MQTTManager::publishDiscovery() {
     _publishJson(MQTT_DISC_BTN_HORA, doc);
   }
 
-  // ── Texto "Mensaje" (fijo): {"tipo":"texto","valor":"..."} ────────────────
+  // ── "Mensaje" text (fixed): {"tipo":"texto","valor":"..."} ────────────────
   {
     JsonDocument doc;
     doc["name"]               = "Mensaje";
@@ -142,7 +142,7 @@ void MQTTManager::publishDiscovery() {
     _publishJson(MQTT_DISC_TXT_FIJO, doc);
   }
 
-  // ── Texto "Mensaje desplazante": {"tipo":"scroll","valor":"..."} ──────────
+  // ── "Mensaje desplazante" text: {"tipo":"scroll","valor":"..."} ───────────
   {
     JsonDocument doc;
     doc["name"]               = "Mensaje desplazante";
@@ -156,7 +156,7 @@ void MQTTManager::publishDiscovery() {
     _publishJson(MQTT_DISC_TXT_SCROLL, doc);
   }
 
-  // ── Numero: {"tipo":"numero","valor":"..."} ───────────────────────────────
+  // ── "Numero": {"tipo":"numero","valor":"..."} ─────────────────────────────
   {
     JsonDocument doc;
     doc["name"]               = "Numero";
@@ -173,7 +173,7 @@ void MQTTManager::publishDiscovery() {
     _publishJson(MQTT_DISC_NUM, doc);
   }
 
-  Serial.println(F("[MQTT] Discovery publicado (light, switch, boton, 2x texto, numero)"));
+  Serial.println(F("[MQTT] Discovery published (light, switch, button, 2x text, number)"));
 }
 
 void MQTTManager::_mqttCallback(char* topic, byte* payload, unsigned int length) {
