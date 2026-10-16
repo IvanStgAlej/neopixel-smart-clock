@@ -1,5 +1,6 @@
 // reloj_neopixel.ino — Reloj NeoPixel + Home Assistant (MQTT)
 // WiFiManager (portal) + NTP + MQTT (Discovery, comandos, modo reloj autonomo).
+#include <Arduino.h>
 #include "config.h"
 #include "display_engine.h"
 #include "mqtt_client.h"
