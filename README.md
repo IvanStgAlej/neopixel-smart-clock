@@ -1,6 +1,6 @@
 # NeoPixel Smart Clock
 
-<!-- CI badge -->
+[![CI](https://github.com/IvanStgAlej/neopixel-smart-clock/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/IvanStgAlej/neopixel-smart-clock/actions/workflows/ci.yml)
 
 A WiFi-connected clock built around an ESP8266 and 56 NeoPixel LEDs arranged as four 7-segment digits. The enclosure is 3D-printed and the whole thing is hand-soldered.
 
