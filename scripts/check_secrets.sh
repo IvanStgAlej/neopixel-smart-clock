@@ -12,18 +12,26 @@ bad=0
 while IFS= read -r v; do
   [ -z "$v" ] && continue
   if [ $hist -eq 1 ]; then
-    revs=$(git rev-list --all)
+    revs=$(git rev-list --all) || { echo "check_secrets: ERROR: git rev-list failed" >&2; exit 2; }
     [ -z "$revs" ] && continue
     # shellcheck disable=SC2086
     files=$(git grep -l -F -e "$v" $revs 2>/dev/null)
   else
     files=$(git grep --cached -l -F -e "$v" 2>/dev/null)
   fi
+  rc=$?
+  # git grep: 0 = match, 1 = no match, >1 = error (must not pass silently)
+  if [ $rc -gt 1 ]; then
+    echo "check_secrets: ERROR: git grep failed (exit $rc); result is unreliable" >&2
+    exit 2
+  fi
   if [ -n "$files" ]; then
     echo "LEAK: secret value (length ${#v}) found in:"
     echo "$files" | sed 's/^/  /' | sort -u
     bad=1
   fi
+# Only *PASS* macros are scanned on purpose: user names are not secrets and
+# cause false positives.
 done < <(grep -E '^[[:space:]]*#define[[:space:]]+[A-Z_]*PASS' "$f" | grep -oE '"[^"]*"' | sed -E 's/^"(.*)"$/\1/')
 if [ $bad -eq 1 ]; then exit 1; fi
 echo "check_secrets: OK"
