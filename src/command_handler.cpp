@@ -193,7 +193,9 @@ void CommandHandler::publishState() {
   doc["ip"]        = WiFi.localIP().toString();
   doc["rssi"]      = WiFi.RSSI();
 
-  char buf[220];
+  doc["version"] = FW_VERSION;
+
+  char buf[256];
   serializeJson(doc, buf, sizeof(buf));
   _mqtt->publish(MQTT_TOPIC_STATE, buf);
 }

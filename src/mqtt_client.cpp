@@ -73,6 +73,7 @@ static void addDevice(JsonDocument& doc) {
   device["name"]         = "Reloj NeoPixel";
   device["model"]        = "ESP8266 NodeMCU";
   device["manufacturer"] = "DIY";
+  device["sw_version"]   = FW_VERSION;
   device["identifiers"].to<JsonArray>().add("reloj_neopixel");
 }
 

@@ -1,6 +1,11 @@
 // config.h
 #pragma once
 
+// Firmware version: normally injected by scripts/version.py from git describe.
+#ifndef FW_VERSION
+#define FW_VERSION "0.0.0-dev"
+#endif
+
 // ── NeoPixel ──────────────────────────────────────────
 #define NEO_PIN        D2
 #define NEO_COUNT      56
