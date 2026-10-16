@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 
 CommandHandler::CommandHandler(DisplayEngine* display, MQTTManager* mqtt)
-  : _display(display), _mqtt(mqtt) {}
+  : _display(display), _mqtt(mqtt), _countdown(TIMER_ALARM_MS, TIMER_BLINK_MS) {}
 
 void CommandHandler::handle(const char* topic, const char* payload) {
   if (strcmp(topic, MQTT_TOPIC_LIGHT_SET) == 0) {
@@ -21,7 +21,7 @@ void CommandHandler::_handleLightSet(const char* payload) {
   if (doc["state"].is<const char*>()) {
     String state = doc["state"].as<String>();
     if (state == "OFF") {
-      if (_timerActive) _endTimer(false);  // al encender se vuelve a lo de antes del temporizador
+      if (_countdown.active()) _endTimer(false);  // al encender se vuelve a lo de antes del temporizador
       _powered = false;
       _display->clear();
       // NO se toca _mode/_value/_color: se recuerda para restaurarlo al encender.
@@ -75,8 +75,7 @@ void CommandHandler::_restoreDisplay() {
     if (_lastHours >= 0) _display->showTime(_lastHours, _lastMinutes);
   } else if (_mode == "temporizador") {
     // Fuerza a tickTimer a repintar en la siguiente vuelta del loop
-    _lastTimerShown = -1;
-    _lastBlinkOn    = -1;
+    _timerRepaint = true;
   } else {
     // Sin contenido previo (arranque/apagado) → por defecto, modo reloj.
     _mode = "hora";
@@ -101,7 +100,7 @@ void CommandHandler::_handleCmd(const char* payload) {
   }
 
   // Cualquier otro comando sustituye al temporizador en marcha
-  if (_timerActive && tipo != "temporizador") _endTimer(false);
+  if (_countdown.active() && tipo != "temporizador") _endTimer(false);
 
   // Color del comando: sobreescribe temporalmente el color de la entidad Light
   // (el temporizador no lo toca, para que al acabar se vuelva al color de antes)
@@ -149,13 +148,13 @@ void CommandHandler::_handleCmd(const char* payload) {
     // {"tipo":"temporizador","segundos":300[,"color":"#RRGGBB"]} · segundos=0 cancela
     long secs = doc["segundos"] | 0L;
     if (secs <= 0) {
-      if (!_timerActive) return;  // nada que cancelar
+      if (!_countdown.active()) return;  // nada que cancelar
       _endTimer(true);
     } else {
       uint32_t tcolor = doc["color"].is<const char*>()
                           ? DisplayEngine::hexToColor(doc["color"].as<const char*>())
                           : DisplayEngine::hexToColor(_color.c_str());
-      _startTimer(min(secs, (long)TIMER_MAX_SECONDS), tcolor);
+      _startTimer(clampTimerSeconds(secs), tcolor);
     }
   }
 
@@ -215,29 +214,26 @@ void CommandHandler::updateClock(int hours, int minutes) {
 
 void CommandHandler::_startTimer(long seconds, uint32_t color) {
   // Si ya habia uno en marcha se reinicia, pero se conserva lo que habia antes de el
-  if (!_timerActive) {
+  if (!_countdown.active()) {
     _prevPowered = _powered;
     _prevMode    = _mode;
     _prevValue   = _value;
   }
-  _timerActive    = true;
-  _timerAlarm     = false;
-  _timerEndMs     = millis() + (unsigned long)seconds * 1000UL;
-  _timerColor     = color;
-  _powered        = true;
-  _mode           = "temporizador";
-  _lastTimerShown = seconds;
-  _lastBlinkOn    = -1;
+  _countdown.start(millis(), seconds);
+  _timerColor   = color;
+  _powered      = true;
+  _mode         = "temporizador";
+  _value        = String(seconds);
+  _timerRepaint = true;  // first tick paints immediately
   _display->setBrightness(_brightness);
-  _renderTimer(seconds);
   Serial.printf("[TIMER] Inicio: %ld s\n", seconds);
 }
 
 void CommandHandler::_endTimer(bool restore) {
-  _timerActive = false;
-  _timerAlarm  = false;
-  _mode        = _prevMode;
-  _value       = _prevValue;
+  _countdown.cancel();
+  _timerRepaint = false;
+  _mode         = _prevMode;
+  _value        = _prevValue;
   if (!restore) return;
 
   _powered = _prevPowered;
@@ -246,51 +242,40 @@ void CommandHandler::_endTimer(bool restore) {
   Serial.println(F("[TIMER] Fin, vuelta al modo anterior"));
 }
 
-// MM:SS por debajo de 100 minutos; HH:MM a partir de ahi
-void CommandHandler::_renderTimer(long seconds) {
-  char buf[12];
-  if (seconds >= 100L * 60) {
-    snprintf(buf, sizeof(buf), "%02ld%02ld", seconds / 3600, (seconds % 3600) / 60);
-  } else {
-    snprintf(buf, sizeof(buf), "%02ld%02ld", seconds / 60, seconds % 60);
-  }
-  _value = String(seconds);
-  _display->showText(buf, _timerColor);
-}
-
 void CommandHandler::tickTimer() {
-  if (!_timerActive || !_powered) return;
-  unsigned long now = millis();
+  if (!_countdown.active() || !_powered) return;
 
-  if (!_timerAlarm) {
-    long remainingMs = (long)(_timerEndMs - now);  // resta con signo: aguanta el desborde de millis()
-    if (remainingMs > 0) {
-      long secs = (remainingMs + 999) / 1000;      // redondeo hacia arriba: muestra 00:01 hasta el final
-      if (secs != _lastTimerShown) {
-        _lastTimerShown = secs;
-        _renderTimer(secs);
+  CountdownFrame f = _countdown.tick(millis());
+  bool paint = f.changed || _timerRepaint;
+  _timerRepaint = false;
+
+  switch (f.phase) {
+    case CountdownPhase::Running:
+      if (paint) {
+        char buf[5];
+        formatTimer(f.secondsLeft, buf);
+        _value = String(f.secondsLeft);
+        _display->showText(buf, _timerColor);
       }
-      return;
-    }
-    _timerAlarm   = true;
-    _alarmStartMs = now;
-    _lastBlinkOn  = -1;
-    _value        = "0";
-    Serial.println(F("[TIMER] Llego a 0"));
-    publishState();
-  }
-
-  // Alarma: parpadeo de 0000 y vuelta a lo anterior
-  unsigned long elapsed = now - _alarmStartMs;
-  if (elapsed >= TIMER_ALARM_MS) {
-    _endTimer(true);
-    publishState();
-    publishLightState();
-    return;
-  }
-  int on = ((elapsed / TIMER_BLINK_MS) % 2 == 0) ? 1 : 0;
-  if (on != _lastBlinkOn) {
-    _lastBlinkOn = on;
-    _display->showText(on ? "0000" : "", DisplayEngine::hexToColor(TIMER_ALARM_COLOR));
+      break;
+    case CountdownPhase::AlarmOn:
+    case CountdownPhase::AlarmOff:
+      if (_value != "0") {  // first alarm frame: reached 0
+        _value = "0";
+        Serial.println(F("[TIMER] Llego a 0"));
+        publishState();
+      }
+      if (paint) {
+        _display->showText(f.phase == CountdownPhase::AlarmOn ? "0000" : "",
+                           DisplayEngine::hexToColor(TIMER_ALARM_COLOR));
+      }
+      break;
+    case CountdownPhase::Finished:
+      _endTimer(true);
+      publishState();
+      publishLightState();
+      break;
+    case CountdownPhase::Idle:
+      break;
   }
 }
