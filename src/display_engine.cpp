@@ -101,7 +101,7 @@ void DisplayEngine::showText(const char* text, uint32_t color) {
   _scrolling = false;
   _pixels.clear();
   uint32_t c = (color != 0) ? color : _baseColor;
-  char t[64];
+  char t[MAX_TEXT_BYTES];  // stack, transient (freed on return)
   int n = (int)normalizeText(text, t, sizeof t);
   for (int i = 0; i < 4 && i < n; i++) {
     _renderChar(i, t[i], c);
@@ -134,7 +134,7 @@ void DisplayEngine::showNumber(int number, uint32_t color) {
 
 void DisplayEngine::startScroll(const char* text, uint32_t color, int speedMs) {
   _scrollText = "    ";
-  char t[64];
+  char t[MAX_TEXT_BYTES];  // stack, transient (freed on return)
   normalizeText(text, t, sizeof t);
   _scrollText += t;
   _scrollText += "    ";

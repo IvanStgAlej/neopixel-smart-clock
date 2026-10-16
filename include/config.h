@@ -4,6 +4,8 @@
 // ── NeoPixel ──────────────────────────────────────────
 #define NEO_PIN        D2
 #define NEO_COUNT      56
+// Max bytes of display text after normalization (255 chars = Home Assistant text max, + NUL)
+#define MAX_TEXT_BYTES 256
 #define NEO_BRIGHTNESS 80       // 0-255, arranca al ~30%
 
 // Orientación física del panel completo.
