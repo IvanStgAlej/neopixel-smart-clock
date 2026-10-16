@@ -1,6 +1,10 @@
 // command_handler.cpp
 #include "command_handler.h"
 #include <ArduinoJson.h>
+#include "command.h"
+
+static_assert(kCommandValueBytes == MAX_TEXT_BYTES,
+              "Command::value size must match the display text buffer");
 
 CommandHandler::CommandHandler(DisplayEngine* display, MQTTManager* mqtt)
   : _display(display), _mqtt(mqtt), _countdown(TIMER_ALARM_MS, TIMER_BLINK_MS) {}
@@ -83,79 +87,77 @@ void CommandHandler::_restoreDisplay() {
 }
 
 void CommandHandler::_handleCmd(const char* payload) {
-  JsonDocument doc;
-  if (deserializeJson(doc, payload) != DeserializationError::Ok) {
+  Command cmd = parseCommand(payload, SCROLL_DEFAULT_MS);  // ~290 B on the stack
+
+  if (cmd.type == CommandType::Invalid) {
     Serial.println(F("[CMD] JSON invalido"));
     return;
   }
-
-  String tipo = doc["tipo"] | "";
-  Serial.printf("[CMD] Tipo: %s\n", tipo.c_str());
-
-  bool known = tipo == "apagar" || tipo == "hora" || tipo == "texto" ||
-               tipo == "numero" || tipo == "scroll" || tipo == "temporizador";
-  if (!known) {
-    Serial.printf("[CMD] Tipo desconocido: %s\n", tipo.c_str());
+  if (cmd.type == CommandType::Unknown) {
+    Serial.println(F("[CMD] Tipo desconocido"));
     return;
   }
 
   // Cualquier otro comando sustituye al temporizador en marcha
-  if (_countdown.active() && tipo != "temporizador") _endTimer(false);
+  if (_countdown.active() && cmd.type != CommandType::Timer) _endTimer(false);
 
   // Color del comando: sobreescribe temporalmente el color de la entidad Light
   // (el temporizador no lo toca, para que al acabar se vuelva al color de antes)
   uint32_t color = 0;
-  if (tipo != "temporizador" && doc["color"].is<const char*>()) {
-    color  = DisplayEngine::hexToColor(doc["color"].as<const char*>());
-    _color = doc["color"].as<String>();
+  if (cmd.type != CommandType::Timer && cmd.hasColor) {
+    color  = DisplayEngine::hexToColor(cmd.color);
+    _color = cmd.color;
   }
 
-  if (tipo == "apagar") {
-    _powered = false;
-    _mode = "apagado";
-    _value = "";
-    _display->clear();
+  switch (cmd.type) {
+    case CommandType::Off:
+      _powered = false;
+      _mode = "apagado";
+      _value = "";
+      _display->clear();
+      break;
 
-  } else if (tipo == "hora") {
-    _powered = true;
-    _mode = "hora";
-    _value = "";
-    // El render lo hace el loop principal (updateClock) que tiene la hora NTP.
+    case CommandType::Clock:
+      _powered = true;
+      _mode = "hora";
+      _value = "";
+      // El render lo hace el loop principal (updateClock) que tiene la hora NTP.
+      break;
 
-  } else if (tipo == "texto") {
-    String val = doc["valor"] | "";
-    _powered = true;
-    _mode = "texto";
-    _value = val;
-    _display->showText(val.c_str(), color);
+    case CommandType::Text:
+      _powered = true;
+      _mode = "texto";
+      _value = cmd.value;
+      _display->showText(cmd.value, color);
+      break;
 
-  } else if (tipo == "numero") {
-    String val = doc["valor"] | "0";
-    _powered = true;
-    _mode = "numero";
-    _value = val;
-    _display->showNumber(val.toInt(), color);
+    case CommandType::Number:
+      _powered = true;
+      _mode = "numero";
+      _value = cmd.value;
+      _display->showNumber(_value.toInt(), color);
+      break;
 
-  } else if (tipo == "scroll") {
-    String val = doc["valor"] | "";
-    int vel = doc["velocidad"] | SCROLL_DEFAULT_MS;
-    _powered = true;
-    _mode = "scroll";
-    _value = val;
-    _display->startScroll(val.c_str(), color, vel);
+    case CommandType::Scroll:
+      _powered = true;
+      _mode = "scroll";
+      _value = cmd.value;
+      _display->startScroll(cmd.value, color, cmd.speedMs);
+      break;
 
-  } else if (tipo == "temporizador") {
-    // {"tipo":"temporizador","segundos":300[,"color":"#RRGGBB"]} · segundos=0 cancela
-    long secs = doc["segundos"] | 0L;
-    if (secs <= 0) {
-      if (!_countdown.active()) return;  // nada que cancelar
-      _endTimer(true);
-    } else {
-      uint32_t tcolor = doc["color"].is<const char*>()
-                          ? DisplayEngine::hexToColor(doc["color"].as<const char*>())
-                          : DisplayEngine::hexToColor(_color.c_str());
-      _startTimer(clampTimerSeconds(secs), tcolor);
-    }
+    case CommandType::Timer:
+      // {"tipo":"temporizador","segundos":300[,"color":"#RRGGBB"]} · segundos=0 cancela
+      if (cmd.seconds <= 0) {
+        if (!_countdown.active()) return;  // nada que cancelar
+        _endTimer(true);
+      } else {
+        uint32_t tcolor = DisplayEngine::hexToColor(cmd.hasColor ? cmd.color : _color.c_str());
+        _startTimer(clampTimerSeconds(cmd.seconds), tcolor);
+      }
+      break;
+
+    default:
+      return;
   }
 
   publishState();
