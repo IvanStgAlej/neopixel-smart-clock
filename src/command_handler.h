@@ -24,6 +24,9 @@ public:
   // Timer: call on every loop iteration (repaints once per second)
   void tickTimer();
 
+  // Weather overlay: call on every loop iteration (ends it and restores the display)
+  void tickOverlay();
+
 private:
   DisplayEngine* _display;
   MQTTManager*   _mqtt;
@@ -44,6 +47,15 @@ private:
   bool          _prevPowered    = false;
   String        _prevMode       = "hora";
   String        _prevValue      = "";
+
+  // Weather overlay: painted on top of the current mode without touching
+  // _powered/_mode/_value, so ending it just repaints what was there.
+  bool          _overlayActive  = false;
+  unsigned long _overlayStart   = 0;
+  unsigned long _overlayMs      = 0;
+
+  void _showWeather(float temperature, float rain, int32_t seconds);
+  void _repaintCurrent();
 
   void _startTimer(long seconds, uint32_t color);
   void _endTimer(bool restore);  // restore=true → go back to the previous state and repaint it

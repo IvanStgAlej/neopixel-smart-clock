@@ -80,8 +80,34 @@ void test_long_color_truncated() {
   TEST_ASSERT_EQUAL_STRING("#00FF00", c.color);
 }
 
+void test_weather() {
+  Command c = parseCommand("{\"tipo\":\"tiempo\",\"temperatura\":19.6,\"lluvia\":40,\"segundos\":8}", 300);
+  TEST_ASSERT_EQUAL((int)CommandType::Weather, (int)c.type);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 19.6f, c.temperature);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 40.0f, c.rain);
+  TEST_ASSERT_EQUAL(8, c.seconds);
+}
+
+void test_weather_defaults() {
+  // Missing fields: 0 °C, 0 % and the default 5 s duration
+  Command c = parseCommand("{\"tipo\":\"tiempo\"}", 300);
+  TEST_ASSERT_EQUAL((int)CommandType::Weather, (int)c.type);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.temperature);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.rain);
+  TEST_ASSERT_EQUAL(5, c.seconds);
+  // Strings (e.g. an "unavailable" sensor) are not numbers
+  c = parseCommand("{\"tipo\":\"tiempo\",\"temperatura\":\"unknown\",\"segundos\":\"x\"}", 300);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.temperature);
+  TEST_ASSERT_EQUAL(5, c.seconds);
+  // Duration is capped at 60 s
+  c = parseCommand("{\"tipo\":\"tiempo\",\"segundos\":600}", 300);
+  TEST_ASSERT_EQUAL(60, c.seconds);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_weather);
+  RUN_TEST(test_weather_defaults);
   RUN_TEST(test_text_with_color);
   RUN_TEST(test_text_without_color);
   RUN_TEST(test_number_default);

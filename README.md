@@ -84,6 +84,7 @@ Command fields for `reloj/cmd`:
 | `scroll` | `valor` (text), optional `velocidad` (ms per step), optional `color` |
 | `apagar` | none; turns the display off |
 | `temporizador` | `segundos` (0 cancels), optional `color` |
+| `tiempo` | `temperatura` (°C), `lluvia` (%), optional `segundos` (default 5, max 60). Temporary overlay: temperature on the left (blue ≤10 °C → white 20-25 °C → orange 30 °C → red ≥35 °C), rain 00-99 on the right in blue; then the previous content returns |
 
 ## Versioning
 

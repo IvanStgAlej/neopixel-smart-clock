@@ -109,6 +109,15 @@ void DisplayEngine::showText(const char* text, uint32_t color) {
   _pixels.show();
 }
 
+void DisplayEngine::showSplit(const char* text, uint32_t leftColor, uint32_t rightColor) {
+  _scrolling = false;
+  _pixels.clear();
+  for (int i = 0; i < 4 && text[i] != '\0'; i++) {
+    _renderChar(i, text[i], i < 2 ? leftColor : rightColor);
+  }
+  _pixels.show();
+}
+
 void DisplayEngine::showNumber(int number, uint32_t color) {
   _scrolling = false;
   _pixels.clear();

@@ -2,6 +2,7 @@
 #include "command_handler.h"
 #include <ArduinoJson.h>
 #include "command.h"
+#include "weather.h"
 
 static_assert(kCommandValueBytes == MAX_TEXT_BYTES,
               "Command::value size must match the display text buffer");
@@ -20,6 +21,7 @@ void CommandHandler::handle(const char* topic, const char* payload) {
 void CommandHandler::_handleLightSet(const char* payload) {
   JsonDocument doc;
   if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+  _overlayActive = false;  // the light command repaints (or clears) the display itself
 
   // ON / OFF
   if (doc["state"].is<const char*>()) {
@@ -98,6 +100,14 @@ void CommandHandler::_handleCmd(const char* payload) {
     return;
   }
 
+  // Weather is a temporary overlay: it leaves the mode, timer and color alone
+  if (cmd.type == CommandType::Weather) {
+    _showWeather(cmd.temperature, cmd.rain, cmd.seconds);
+    return;
+  }
+  bool hadOverlay = _overlayActive;
+  _overlayActive = false;  // any other command replaces the overlay
+
   // Any other command replaces the running timer
   if (_countdown.active() && cmd.type != CommandType::Timer) _endTimer(false);
 
@@ -148,7 +158,10 @@ void CommandHandler::_handleCmd(const char* payload) {
     case CommandType::Timer:
       // {"tipo":"temporizador","segundos":300[,"color":"#RRGGBB"]} · segundos=0 cancels
       if (cmd.seconds <= 0) {
-        if (!_countdown.active()) return;  // nothing to cancel
+        if (!_countdown.active()) {        // nothing to cancel
+          if (hadOverlay) _repaintCurrent();
+          return;
+        }
         _endTimer(true);
       } else {
         uint32_t tcolor = DisplayEngine::hexToColor(cmd.hasColor ? cmd.color : _color.c_str());
@@ -201,7 +214,37 @@ void CommandHandler::publishState() {
 }
 
 bool CommandHandler::isClockMode() const {
-  return _powered && (_mode == "hora");
+  // false during the overlay so the main loop doesn't paint over it; when it
+  // ends the loop sees clock mode again and repaints the time immediately
+  return _powered && (_mode == "hora") && !_overlayActive;
+}
+
+// ── Weather overlay ─────────────────────────────────────────────────────────
+
+void CommandHandler::_showWeather(float temperature, float rain, int32_t seconds) {
+  char text[5];
+  formatWeather(temperature, rain, text);
+  _overlayActive = true;
+  _overlayStart  = millis();
+  _overlayMs     = (unsigned long)seconds * 1000UL;
+  _display->setBrightness(_brightness);  // visible even if the clock was off
+  _display->showSplit(text, weatherTempColor(temperature), kWeatherRainColor);
+  Serial.printf("[WEATHER] '%s' for %ld s\n", text, (long)seconds);
+}
+
+void CommandHandler::tickOverlay() {
+  if (!_overlayActive) return;
+  if (millis() - _overlayStart < _overlayMs) return;
+  _overlayActive = false;
+  _repaintCurrent();
+  Serial.println(F("[WEATHER] Done, back to previous mode"));
+}
+
+// Repaints whatever the current state says should be on screen.
+void CommandHandler::_repaintCurrent() {
+  if (_countdown.active()) _timerRepaint = true;  // tickTimer repaints (or ends) it
+  else if (_powered)       _restoreDisplay();     // clock mode is repainted by the main loop
+  else                     _display->clear();
 }
 
 void CommandHandler::updateClock(int hours, int minutes) {
@@ -248,6 +291,7 @@ void CommandHandler::_endTimer(bool restore) {
 
 void CommandHandler::tickTimer() {
   if (!_countdown.active() || !_powered) return;
+  if (_overlayActive) return;  // countdown keeps time via millis(); resumes after the overlay
 
   CountdownFrame f = _countdown.tick(millis());
   bool paint = f.changed || _timerRepaint;
