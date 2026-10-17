@@ -1,11 +1,11 @@
-// mqtt_client.h — Conexion MQTT, Discovery y pub/sub para Home Assistant
+// mqtt_client.h — MQTT connection, Discovery and pub/sub for Home Assistant
 #pragma once
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoJson.h>
 #include "config.h"
 
-// Callback que recibe los mensajes ya copiados a string terminada en '\0'
+// Callback receiving messages already copied into a NUL-terminated string
 typedef void (*MQTTMessageCallback)(const char* topic, const char* payload);
 
 class MQTTManager {
@@ -26,7 +26,7 @@ private:
   unsigned long       _lastReconnectAttempt = 0;
 
   bool _connect();
-  void _publishJson(const char* topic, JsonDocument& doc);  // serializa + publica (retain)
+  void _publishJson(const char* topic, JsonDocument& doc);  // serialize + publish (retained)
   static void _mqttCallback(char* topic, byte* payload, unsigned int length);
-  static MQTTManager* _instance;   // singleton para el callback estatico
+  static MQTTManager* _instance;   // singleton for the static callback
 };

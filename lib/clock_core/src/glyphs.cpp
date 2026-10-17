@@ -1,0 +1,81 @@
+// glyphs.cpp - masks precomputed from the original DIGIT_MAP / CHAR_MAP tables.
+#include "glyphs.h"
+
+static const uint16_t DIGIT_MASKS[10] = {
+  0x3FFC,  // 0
+  0x03C0,  // 1
+  0x3CF3,  // 2
+  0x0FF3,  // 3
+  0x03CF,  // 4
+  0x0F3F,  // 5
+  0x3F3F,  // 6
+  0x03F0,  // 7
+  0x3FFF,  // 8
+  0x0FFF,  // 9
+};
+
+struct CharMask { char key; uint16_t mask; };
+static const CharMask CHAR_MASKS[] = {
+  { ' ', 0x0000 },
+  { '-', 0x0003 },
+  { 'A', 0x33FF },
+  { 'B', 0x3F0F },
+  { 'C', 0x3C3C },
+  { 'D', 0x3FC3 },
+  { 'E', 0x3C3F },
+  { 'F', 0x303F },
+  { 'G', 0x3F3C },
+  { 'H', 0x33CF },
+  { 'I', 0x03C0 },
+  { 'J', 0x0FC0 },
+  { 'L', 0x3C0C },
+  { 'N', 0x3303 },
+  { 'O', 0x3FFC },
+  { 'P', 0x30FF },
+  { 'R', 0x3003 },
+  { 'S', 0x0F3F },
+  { 'T', 0x3C0F },
+  { 'U', 0x3FCC },
+  { 'Y', 0x0FCF },
+  { 'Z', 0x3CF3 },
+  { 'K', 0x30CF },
+  { 'M', 0x33FC },
+  { 'Q', 0x03FF },
+  { 'V', 0x3F00 },
+  { 'W', 0x3FCF },
+  { 'X', 0x33CC },
+};
+
+uint16_t glyphMask(char c) {
+  if (c >= 'a' && c <= 'z') c = (char)(c - 32);
+  if (c >= '0' && c <= '9') return DIGIT_MASKS[c - '0'];
+  for (size_t i = 0; i < sizeof(CHAR_MASKS) / sizeof(CHAR_MASKS[0]); i++) {
+    if (CHAR_MASKS[i].key == c) return CHAR_MASKS[i].mask;
+  }
+  return 0;
+}
+
+size_t normalizeText(const char* in, char* out, size_t outSize) {
+  if (outSize == 0) return 0;
+  size_t n = 0;
+  for (const unsigned char* p = (const unsigned char*)in; *p && n + 1 < outSize; p++) {
+    if (*p == 0xC3) {
+      if (!*(p + 1)) break;  // truncated UTF-8: drop the lone lead byte
+      char r = 0;
+      switch (*(++p)) {
+        case 0x81: case 0xA1: r = 'A'; break;
+        case 0x89: case 0xA9: r = 'E'; break;
+        case 0x8D: case 0xAD: r = 'I'; break;
+        case 0x93: case 0xB3: r = 'O'; break;
+        case 0x9A: case 0xBA: case 0x9C: case 0xBC: r = 'U'; break;
+        case 0x91: case 0xB1: r = 'N'; break;
+        default: break;  // other sequences are skipped
+      }
+      if (r) out[n++] = r;
+    } else {
+      out[n++] = (char)*p;
+    }
+  }
+  out[n] = '\0';
+  return n;
+}

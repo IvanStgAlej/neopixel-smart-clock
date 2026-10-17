@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # scripts/version.py needs the tag via git describe
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install "platformio==6.1.*"
+
+      - name: Unit tests (native)
+        run: pio test -e native
+
+      - name: Build firmware
+        shell: bash  # enables pipefail so a failed build is not masked by tee
+        run: pio run -e nodemcuv2 2>&1 | tee build.log
+
+      - name: Verify embedded version equals the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Exact match: fails on "-dirty", "-N-gHASH" or "0.0.0-dev" versions.
+          if ! grep -Fxq "Firmware version: ${TAG}" build.log; then
+            echo "::error::Build reported a version different from tag ${TAG}:"
+            grep "Firmware version:" build.log || true
+            exit 1
+          fi
+          # Also check the string really made it into the binary.
+          if ! grep -aqF "${TAG}" .pio/build/nodemcuv2/firmware.bin; then
+            echo "::error::Tag ${TAG} not found inside firmware.bin"
+            exit 1
+          fi
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          cp .pio/build/nodemcuv2/firmware.bin "firmware-${{ github.ref_name }}.bin"
+          sha256sum "firmware-${{ github.ref_name }}.bin" > "firmware-${{ github.ref_name }}.bin.sha256"
+          cat "firmware-${{ github.ref_name }}.bin.sha256"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            firmware-${{ github.ref_name }}.bin
+            firmware-${{ github.ref_name }}.bin.sha256
+          generate_release_notes: true
+          body: |
+            **Warning:** this binary was built in CI without `include/secrets.h`, so it contains placeholder credentials (MQTT/OTA password `change-me`, `/update` login `admin`/`change-me`). It is a reference artifact. Do not flash it onto a real clock: the MQTT login would fail and the OTA passwords would be guessable. Build from source with your own `include/secrets.h` instead.
