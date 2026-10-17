@@ -1,5 +1,6 @@
 // command.cpp — MQTT command JSON parsing
 #include "command.h"
+#include "weather.h"
 #include <ArduinoJson.h>
 #include <string.h>
 
@@ -16,7 +17,13 @@ static CommandType typeFromName(const char* tipo) {
   if (strcmp(tipo, "numero") == 0) return CommandType::Number;
   if (strcmp(tipo, "scroll") == 0) return CommandType::Scroll;
   if (strcmp(tipo, "temporizador") == 0) return CommandType::Timer;
+  if (strcmp(tipo, "tiempo") == 0) return CommandType::Weather;
   return CommandType::Unknown;
+}
+
+// Number from a JSON value; strings and missing give 0.
+static float floatFrom(JsonVariantConst v) {
+  return v.is<double>() ? (float)v.as<double>() : 0.0f;
 }
 
 // Whole seconds from a JSON number; strings, missing and negatives give 0.
@@ -60,6 +67,13 @@ Command parseCommand(const char* json, int defaultSpeedMs) {
       break;
     case CommandType::Timer:
       cmd.seconds = secondsFrom(doc["segundos"]);
+      break;
+    case CommandType::Weather:
+      cmd.temperature = floatFrom(doc["temperatura"]);
+      cmd.rain        = floatFrom(doc["lluvia"]);
+      cmd.seconds     = secondsFrom(doc["segundos"]);
+      if (cmd.seconds <= 0) cmd.seconds = kWeatherDefaultSeconds;
+      if (cmd.seconds > kWeatherMaxSeconds) cmd.seconds = kWeatherMaxSeconds;
       break;
     default:
       break;

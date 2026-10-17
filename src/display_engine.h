@@ -14,6 +14,8 @@ public:
   void showTime(int hours, int minutes);
   void showText(const char* text, uint32_t color);
   void showNumber(int number, uint32_t color);
+  // 4 characters: positions 0-1 in leftColor, 2-3 in rightColor
+  void showSplit(const char* text, uint32_t leftColor, uint32_t rightColor);
 
   // Scroll
   void startScroll(const char* text, uint32_t color, int speedMs);

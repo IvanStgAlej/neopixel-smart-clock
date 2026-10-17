@@ -8,12 +8,14 @@
 // (asserted in src/command_handler.cpp).
 static const size_t kCommandValueBytes = 256;
 
-enum class CommandType { Invalid, Unknown, Off, Clock, Text, Number, Scroll, Timer };
+enum class CommandType { Invalid, Unknown, Off, Clock, Text, Number, Scroll, Timer, Weather };
 
 struct Command {
   CommandType type;
   char value[kCommandValueBytes];  // text/number/scroll, truncated and NUL-terminated
-  int32_t seconds;                 // timer; 0 = cancel
+  int32_t seconds;                 // timer (0 = cancel) · weather: overlay duration (1-60, default 5)
+  float temperature;               // weather: °C
+  float rain;                      // weather: precipitation probability %
   int speedMs;                     // scroll
   bool hasColor;
   char color[8];                   // "#RRGGBB" (truncated to 7 chars + NUL)
