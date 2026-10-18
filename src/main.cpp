@@ -242,7 +242,7 @@ void loop() {
   mqttWasConnected = mqttNow;
 
   display.tickScroll();
-  cmdHandler.tickOverlay(); // weather overlay timeout → back to the previous content
+  cmdHandler.tickOverlay(); // overlay (weather/notice) timeout → back to the previous content
   cmdHandler.tickTimer();   // countdown and final blink (independent of WiFi)
 
   // ── Clock mode: refresh on entry, then every minute (WiFi only) ───────────

@@ -104,8 +104,29 @@ void test_weather_defaults() {
   TEST_ASSERT_EQUAL(60, c.seconds);
 }
 
+void test_notice() {
+  Command c = parseCommand("{\"tipo\":\"aviso\",\"valor\":\"CARG\",\"color\":\"#FF0000\",\"segundos\":8}", 300);
+  TEST_ASSERT_EQUAL((int)CommandType::Notice, (int)c.type);
+  TEST_ASSERT_EQUAL_STRING("CARG", c.value);
+  TEST_ASSERT_TRUE(c.hasColor);
+  TEST_ASSERT_EQUAL_STRING("#FF0000", c.color);
+  TEST_ASSERT_EQUAL(8, c.seconds);
+}
+
+void test_notice_defaults() {
+  Command c = parseCommand("{\"tipo\":\"aviso\"}", 300);
+  TEST_ASSERT_EQUAL((int)CommandType::Notice, (int)c.type);
+  TEST_ASSERT_EQUAL_STRING("", c.value);
+  TEST_ASSERT_FALSE(c.hasColor);
+  TEST_ASSERT_EQUAL(5, c.seconds);
+  c = parseCommand("{\"tipo\":\"aviso\",\"valor\":\"x\",\"segundos\":600}", 300);
+  TEST_ASSERT_EQUAL(60, c.seconds);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_notice);
+  RUN_TEST(test_notice_defaults);
   RUN_TEST(test_weather);
   RUN_TEST(test_weather_defaults);
   RUN_TEST(test_text_with_color);

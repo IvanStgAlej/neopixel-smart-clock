@@ -5,10 +5,6 @@
 // Color of the rain digits (0xRRGGBB): plain blue.
 static const uint32_t kWeatherRainColor = 0x0000FF;
 
-// Default and maximum time the overlay stays on screen (seconds).
-static const int32_t kWeatherDefaultSeconds = 5;
-static const int32_t kWeatherMaxSeconds     = 60;
-
 // Writes the 4 display characters + NUL into out:
 //   positions 0-1: temperature rounded, right-aligned, clamped to -9..99
 //   positions 2-3: rain probability rounded, two digits, clamped to 00..99

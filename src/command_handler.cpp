@@ -100,9 +100,13 @@ void CommandHandler::_handleCmd(const char* payload) {
     return;
   }
 
-  // Weather is a temporary overlay: it leaves the mode, timer and color alone
+  // Weather and notices are temporary overlays: they leave the mode, timer and color alone
   if (cmd.type == CommandType::Weather) {
     _showWeather(cmd.temperature, cmd.rain, cmd.seconds);
+    return;
+  }
+  if (cmd.type == CommandType::Notice) {
+    _showNotice(cmd.value, cmd.hasColor ? cmd.color : _color.c_str(), cmd.seconds);
     return;
   }
   bool hadOverlay = _overlayActive;
@@ -219,17 +223,27 @@ bool CommandHandler::isClockMode() const {
   return _powered && (_mode == "hora") && !_overlayActive;
 }
 
-// ── Weather overlay ─────────────────────────────────────────────────────────
+// ── Temporary overlays (weather, notice) ────────────────────────────────────
 
-void CommandHandler::_showWeather(float temperature, float rain, int32_t seconds) {
-  char text[5];
-  formatWeather(temperature, rain, text);
+void CommandHandler::_beginOverlay(int32_t seconds) {
   _overlayActive = true;
   _overlayStart  = millis();
   _overlayMs     = (unsigned long)seconds * 1000UL;
   _display->setBrightness(_brightness);  // visible even if the clock was off
+}
+
+void CommandHandler::_showWeather(float temperature, float rain, int32_t seconds) {
+  char text[5];
+  formatWeather(temperature, rain, text);
+  _beginOverlay(seconds);
   _display->showSplit(text, weatherTempColor(temperature), kWeatherRainColor);
-  Serial.printf("[WEATHER] '%s' for %ld s\n", text, (long)seconds);
+  Serial.printf("[OVERLAY] Weather '%s' for %ld s\n", text, (long)seconds);
+}
+
+void CommandHandler::_showNotice(const char* text, const char* hexColor, int32_t seconds) {
+  _beginOverlay(seconds);
+  _display->showText(text, DisplayEngine::hexToColor(hexColor));
+  Serial.printf("[OVERLAY] Notice '%s' for %ld s\n", text, (long)seconds);
 }
 
 void CommandHandler::tickOverlay() {
@@ -237,7 +251,7 @@ void CommandHandler::tickOverlay() {
   if (millis() - _overlayStart < _overlayMs) return;
   _overlayActive = false;
   _repaintCurrent();
-  Serial.println(F("[WEATHER] Done, back to previous mode"));
+  Serial.println(F("[OVERLAY] Done, back to previous mode"));
 }
 
 // Repaints whatever the current state says should be on screen.

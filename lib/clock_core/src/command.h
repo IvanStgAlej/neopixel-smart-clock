@@ -8,12 +8,17 @@
 // (asserted in src/command_handler.cpp).
 static const size_t kCommandValueBytes = 256;
 
-enum class CommandType { Invalid, Unknown, Off, Clock, Text, Number, Scroll, Timer, Weather };
+// Default and maximum time a temporary overlay (weather, notice) stays on screen.
+static const int32_t kOverlayDefaultSeconds = 5;
+static const int32_t kOverlayMaxSeconds     = 60;
+
+// Weather and Notice are temporary overlays: the previous content returns after `seconds`.
+enum class CommandType { Invalid, Unknown, Off, Clock, Text, Number, Scroll, Timer, Weather, Notice };
 
 struct Command {
   CommandType type;
-  char value[kCommandValueBytes];  // text/number/scroll, truncated and NUL-terminated
-  int32_t seconds;                 // timer (0 = cancel) · weather: overlay duration (1-60, default 5)
+  char value[kCommandValueBytes];  // text/number/scroll/notice, truncated and NUL-terminated
+  int32_t seconds;                 // timer (0 = cancel) · overlays: duration (1-60, default 5)
   float temperature;               // weather: °C
   float rain;                      // weather: precipitation probability %
   int speedMs;                     // scroll
