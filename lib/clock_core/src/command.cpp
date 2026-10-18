@@ -1,6 +1,5 @@
 // command.cpp — MQTT command JSON parsing
 #include "command.h"
-#include "weather.h"
 #include <ArduinoJson.h>
 #include <string.h>
 
@@ -18,6 +17,7 @@ static CommandType typeFromName(const char* tipo) {
   if (strcmp(tipo, "scroll") == 0) return CommandType::Scroll;
   if (strcmp(tipo, "temporizador") == 0) return CommandType::Timer;
   if (strcmp(tipo, "tiempo") == 0) return CommandType::Weather;
+  if (strcmp(tipo, "aviso") == 0) return CommandType::Notice;
   return CommandType::Unknown;
 }
 
@@ -33,6 +33,13 @@ static int32_t secondsFrom(JsonVariantConst v) {
   if (!(d >= 1.0)) return 0;                        // also rejects NaN
   if (d >= 2000000000.0) return 2000000000;         // caller clamps to the timer range
   return (int32_t)d;
+}
+
+// Overlay duration: missing/invalid → default, capped at the maximum.
+static int32_t overlaySecondsFrom(JsonVariantConst v) {
+  int32_t s = secondsFrom(v);
+  if (s <= 0) return kOverlayDefaultSeconds;
+  return s > kOverlayMaxSeconds ? kOverlayMaxSeconds : s;
 }
 
 Command parseCommand(const char* json, int defaultSpeedMs) {
@@ -71,9 +78,11 @@ Command parseCommand(const char* json, int defaultSpeedMs) {
     case CommandType::Weather:
       cmd.temperature = floatFrom(doc["temperatura"]);
       cmd.rain        = floatFrom(doc["lluvia"]);
-      cmd.seconds     = secondsFrom(doc["segundos"]);
-      if (cmd.seconds <= 0) cmd.seconds = kWeatherDefaultSeconds;
-      if (cmd.seconds > kWeatherMaxSeconds) cmd.seconds = kWeatherMaxSeconds;
+      cmd.seconds     = overlaySecondsFrom(doc["segundos"]);
+      break;
+    case CommandType::Notice:
+      copyTruncated(cmd.value, sizeof(cmd.value), valor ? valor : "");
+      cmd.seconds = overlaySecondsFrom(doc["segundos"]);
       break;
     default:
       break;

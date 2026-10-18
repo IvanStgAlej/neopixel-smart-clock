@@ -24,7 +24,7 @@ public:
   // Timer: call on every loop iteration (repaints once per second)
   void tickTimer();
 
-  // Weather overlay: call on every loop iteration (ends it and restores the display)
+  // Temporary overlays: call on every loop iteration (ends them and restores the display)
   void tickOverlay();
 
 private:
@@ -48,13 +48,15 @@ private:
   String        _prevMode       = "hora";
   String        _prevValue      = "";
 
-  // Weather overlay: painted on top of the current mode without touching
-  // _powered/_mode/_value, so ending it just repaints what was there.
+  // Temporary overlay (weather, notice): painted on top of the current mode without
+  // touching _powered/_mode/_value/_color, so ending it just repaints what was there.
   bool          _overlayActive  = false;
   unsigned long _overlayStart   = 0;
   unsigned long _overlayMs      = 0;
 
+  void _beginOverlay(int32_t seconds);
   void _showWeather(float temperature, float rain, int32_t seconds);
+  void _showNotice(const char* text, const char* hexColor, int32_t seconds);
   void _repaintCurrent();
 
   void _startTimer(long seconds, uint32_t color);
